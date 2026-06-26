@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Fira+Code:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-mono: "Fira Code", monospace;
+
+  --color-royal-gold: #eab308;
+  --color-royal-navy: #0f172a;
+}
+
+/* Custom animations and styling utilities */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(234, 179, 8, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(234, 179, 8, 0.8), 0 0 10px rgba(234, 179, 8, 0.4);
+  }
+}
+
+.crown-winner-glow {
+  animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+/* Smooth continuous button style */
+.royal-gradient-btn {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.royal-gradient-btn:hover {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  border-color: #eab308;
+}
+
+/* Traditional blinking text cursor line */
+@keyframes blink-cursor-anim {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.blinking-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  background-color: #f59e0b; /* Amber-500 */
+  margin-left: 1px;
+  vertical-align: -2px;
+  animation: blink-cursor-anim 0.9s step-start infinite;
+}
+
+/* Set traditional blinking text cursor color on all input/editable fields */
+input, textarea, [contenteditable] {
+  caret-color: #f59e0b !important;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

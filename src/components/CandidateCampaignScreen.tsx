@@ -1,0 +1,809 @@
+import React, { useState, useRef, useEffect } from "react";
+import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud } from "lucide-react";
+import { Campaign, Candidate } from "../types";
+import KingdomCourtBuilder from "./KingdomCourtBuilder";
+import { auth, db } from "../firebase";
+import { collection, query, where, orderBy, getDocs, onSnapshot } from "firebase/firestore";
+import { motion, AnimatePresence } from "motion/react";
+import PostCard, { Post } from "./PostCard";
+
+interface CandidateCampaignScreenProps {
+  campaign: Campaign;
+  candidate: Candidate;
+  onBack: () => void;
+  userId: string;
+  userName: string;
+  userPhotoURL: string | null;
+  userProfiles: any[];
+}
+
+export default function CandidateCampaignScreen({
+  campaign,
+  candidate,
+  onBack,
+  userId,
+  userName,
+  userPhotoURL,
+  userProfiles,
+}: CandidateCampaignScreenProps) {
+  const [hasJoined, setHasJoined] = useState(false);
+  const [showJoinToast, setShowJoinToast] = useState(false);
+  const [showDetailsPage, setShowDetailsPage] = useState(false);
+
+  const [activeDetailsTab, setActiveDetailsTab] = useState<'info' | 'posts' | 'media'>('info');
+  const [editBio, setEditBio] = useState(candidate.bio || "");
+  const [editCoverBio, setEditCoverBio] = useState(candidate.bio || "");
+  const [isBioFocused, setIsBioFocused] = useState(false);
+  const [isSavingBio, setIsSavingBio] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
+
+  const isGuest = userId.startsWith("local_");
+
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [selectedMediaPost, setSelectedMediaPost] = useState<Post | null>(null);
+
+  useEffect(() => {
+    // Log campaign visit for this specific candidate
+    if (candidate.userId && candidate.userId !== auth.currentUser?.uid) {
+      auth.currentUser?.getIdToken().then(token => {
+        fetch("/api/log-campaign-visit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ targetUserId: candidate.userId })
+        }).catch(err => console.error("Failed to log candidate campaign visit", err));
+      }).catch(() => {});
+    }
+
+    let unsubscribe: (() => void) | undefined;
+    async function loadPosts() {
+      setIsLoadingPosts(true);
+      try {
+        const postsRef = collection(db, "posts");
+        const q = query(
+          postsRef,
+          where("userId", "==", candidate.userId),
+          where("campaignId", "==", campaign.id)
+        );
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+          fetched.sort((a, b) => {
+            const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+            const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+            return tB - tA;
+          });
+          setPosts(fetched);
+          setIsLoadingPosts(false);
+          
+          // Update selected media post if it's currently open
+          setSelectedMediaPost(prev => {
+            if (!prev) return prev;
+            return fetched.find(p => p.id === prev.id) || null;
+          });
+        }, (error) => {
+          console.error("Error loading posts:", error);
+          setIsLoadingPosts(false);
+        });
+      } catch (err) {
+        console.error("Error loading posts:", err);
+        setIsLoadingPosts(false);
+      }
+    }
+    loadPosts();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [candidate.userId, campaign.id]);
+
+  // Snapping / Scroll state
+  const [activeSection, setActiveSection] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Hide body scrollbar when this component is mounted to prevent double-scrollbars
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  // Edit details modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(candidate.campaignTitle || candidate.displayName);
+  const [editBannerURL, setEditBannerURL] = useState(candidate.bannerURL || "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  const processFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setEditError("Please select a valid image file.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setEditError("Image size must be under 4MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setEditBannerURL(event.target.result as string);
+        setEditError(null);
+      }
+    };
+    reader.onerror = () => {
+      setEditError("Error reading file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const [localCampaignTitle, setLocalCampaignTitle] = useState(candidate.campaignTitle || candidate.displayName);
+  const [localBannerURL, setLocalBannerURL] = useState(candidate.bannerURL || "");
+
+  // Update local states when candidate prop changes
+  useEffect(() => {
+    setLocalCampaignTitle(candidate.campaignTitle || candidate.displayName);
+    setLocalBannerURL(candidate.bannerURL || "");
+    setEditTitle(candidate.campaignTitle || candidate.displayName);
+    setEditBannerURL(candidate.bannerURL || "");
+    setEditCoverBio(candidate.bio || "");
+    setEditBio(candidate.bio || "");
+  }, [candidate]);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, clientHeight } = containerRef.current;
+    // Calculate current snapped index
+    const index = Math.round(scrollTop / clientHeight);
+    if (index !== activeSection && index >= 0 && index <= 1) {
+      setActiveSection(index);
+    }
+  };
+
+  const scrollToSection = (index: number) => {
+    const el = document.getElementById(`section-${index}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleJoin = () => {
+    if (isGuest) {
+      setError("Guests cannot join campaigns. Please register an account.");
+      return;
+    }
+    setHasJoined(true);
+    setShowJoinToast(true);
+    // Hide toast after 4 seconds
+    setTimeout(() => {
+      setShowJoinToast(false);
+    }, 4000);
+  };
+
+  const handleSaveChanges = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isGuest) {
+      setEditError("Guests cannot edit campaigns.");
+      return;
+    }
+    setIsSaving(true);
+    setEditError(null);
+
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/update-candidate-details", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+          campaignTitle: editTitle,
+          bannerURL: editBannerURL,
+          bio: editCoverBio
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update campaign details");
+      }
+
+      setLocalCampaignTitle(editTitle);
+      setLocalBannerURL(editBannerURL);
+      
+      // Mutate passed candidate object so that change is persistent in the parent list
+      candidate.campaignTitle = editTitle;
+      candidate.bannerURL = editBannerURL;
+      candidate.bio = editCoverBio;
+
+      setEditBio(editCoverBio);
+
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      setEditError(err.message || "An unexpected error occurred");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveBio = async () => {
+    if (isGuest) {
+      setBioError("Guests cannot edit bios.");
+      return;
+    }
+    setIsSavingBio(true);
+    setBioError(null);
+
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/update-candidate-details", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+          bio: editBio
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update bio");
+      }
+      
+      candidate.bio = editBio;
+    } catch (err: any) {
+      console.error(err);
+      setBioError(err.message || "An unexpected error occurred");
+    } finally {
+      setIsSavingBio(false);
+    }
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      onScroll={handleScroll}
+      id="candidate-campaign-container"
+      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-[35] bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >
+      <style>{`
+        #candidate-campaign-container::-webkit-scrollbar {
+          display: none !important;
+        }
+      `}</style>
+      {showDetailsPage ? (
+        <div className="w-full h-full pt-8 px-4 sm:px-8 pb-12 flex flex-col max-w-4xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <button
+              onClick={() => setShowDetailsPage(false)}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              title="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h1 className="text-xl font-display font-black text-slate-900 dark:text-white uppercase tracking-wider">
+              Campaign Details
+            </h1>
+          </div>
+          
+          <div className="flex border-b border-slate-200 dark:border-slate-800 mb-6 font-mono text-xs font-bold uppercase tracking-widest gap-2">
+            <button 
+              onClick={() => setActiveDetailsTab('info')}
+              className={`px-4 py-2.5 border-b-2 transition-all ${activeDetailsTab === 'info' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            >
+              Info
+            </button>
+            <button 
+              onClick={() => setActiveDetailsTab('posts')}
+              className={`px-4 py-2.5 border-b-2 transition-all ${activeDetailsTab === 'posts' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            >
+              Posts
+            </button>
+            <button 
+              onClick={() => setActiveDetailsTab('media')}
+              className={`px-4 py-2.5 border-b-2 transition-all ${activeDetailsTab === 'media' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            >
+              Media
+            </button>
+          </div>
+
+          <div className="flex-1 flex flex-col gap-6">
+            {activeDetailsTab === 'info' && (
+              <div className="w-full text-slate-700 dark:text-slate-300 text-sm md:text-base leading-relaxed">
+                {userId === candidate.userId ? (
+                  <div className="relative">
+                    {bioError && (
+                      <div className="text-rose-500 text-xs mb-2">{bioError}</div>
+                    )}
+                    <span
+                      contentEditable
+                      suppressContentEditableWarning
+                      onFocus={() => setIsBioFocused(true)}
+                      onBlur={(e) => {
+                        setEditBio(e.currentTarget.textContent || "");
+                        setIsBioFocused(false);
+                      }}
+                      onInput={(e) => setEditBio(e.currentTarget.textContent || "")}
+                      className="outline-none bg-transparent inline whitespace-pre-wrap focus:ring-2 focus:ring-amber-500/30 rounded p-1 empty:before:content-['Write_your_mission_statement...'] empty:before:text-slate-400 caret-amber-500"
+                    >
+                      {candidate.bio || ""}
+                    </span>
+                    {isBioFocused && <span className="blinking-cursor" />}
+                    {editBio !== (candidate.bio || "") && (
+                      <button
+                        onClick={handleSaveBio}
+                        disabled={isSavingBio}
+                        className="ml-2 inline-flex items-center px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded transition-all shadow-sm cursor-pointer disabled:opacity-50 align-middle"
+                      >
+                        {isSavingBio ? "..." : "Save"}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{candidate.bio || "No mission statement provided yet."}</p>
+                )}
+              </div>
+            )}
+
+            {activeDetailsTab === 'posts' && (
+              <div className="flex flex-col gap-4 mt-6">
+                {isLoadingPosts ? (
+                  <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-amber-500" /></div>
+                ) : posts.filter(p => !p.imageUrl).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500 font-mono text-xs uppercase tracking-widest mt-12">
+                    [ No text posts yet ]
+                  </div>
+                ) : (
+                  posts.filter(p => !p.imageUrl).map(post => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      currentUser={{ uid: userId, displayName: userName }}
+                      onDelete={(deletedId) => setPosts(posts.filter(p => p.id !== deletedId))}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeDetailsTab === 'media' && (
+              <div className="mt-6">
+                {isLoadingPosts ? (
+                  <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-amber-500" /></div>
+                ) : posts.filter(p => !!p.imageUrl).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500 font-mono text-xs uppercase tracking-widest mt-12">
+                    [ No media posts yet ]
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {posts.filter(p => !!p.imageUrl).map(post => (
+                      <div key={post.id} onClick={() => setSelectedMediaPost(post)} className="aspect-square bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity border border-slate-200 dark:border-slate-700 relative group">
+                        <img src={post.imageUrl || undefined} alt="Media" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <ImageIcon className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Side Scroll Indicator */}
+          <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[50] flex flex-col gap-3">
+            {[0, 1].map((idx) => (
+              <button
+                key={idx}
+                onClick={() => scrollToSection(idx)}
+                className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  activeSection === idx 
+                    ? "bg-amber-500 scale-[1.3]" 
+                    : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
+                }`}
+                aria-label={`Go to section ${idx + 1}`}
+              />
+            ))}
+          </div>
+
+          {/* SECTION 1: CANDIDATE INFO HERO */}
+          <section id="section-0" className="w-full flex flex-col justify-center py-4 px-4 relative">
+            <div className="w-full max-w-3xl mx-auto flex flex-col gap-4 justify-center items-center">
+              
+              {/* Elegant Navigation Bar */}
+              <div className="w-full flex items-center justify-start py-1 shrink-0">
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to domain info</span>
+                </button>
+              </div>
+              
+              <div className="w-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 flex flex-col relative overflow-hidden shadow-md">
+                {/* Elegant Banner Area */}
+                <div className="w-full h-28 sm:h-40 relative bg-slate-200 dark:bg-slate-950 overflow-hidden shrink-0 border-b border-slate-200 dark:border-slate-800/80">
+                  {localBannerURL ? (
+                    <img src={localBannerURL || undefined} alt="Campaign banner" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-r from-amber-500/10 via-slate-500/5 to-slate-800/20" />
+                  )}
+                  
+                  {/* Action buttons in top-right of the banner/title box */}
+                  <div className="absolute top-3 right-4 z-20 flex gap-2">
+                    {userId === candidate.userId && (
+                      <button
+                        id="edit-campaign-button"
+                        onClick={() => {
+                          if (isGuest) {
+                            setError("Guests cannot edit campaigns. Please log in.");
+                            return;
+                          }
+                          setEditTitle(localCampaignTitle);
+                          setEditBannerURL(localBannerURL);
+                          setEditCoverBio(candidate.bio || "");
+                          setEditError(null);
+                          setIsEditModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-amber-400 dark:text-amber-400 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
+                        title="Edit Cover"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit Cover</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Campaign info details */}
+                <div className="p-5 sm:p-6 pb-12 sm:pb-6 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 relative">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                  
+                  <div className="flex flex-col sm:flex-row items-center gap-4 z-10 relative -mt-12 sm:-mt-16">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-900 shadow-md shrink-0 bg-slate-250 dark:bg-slate-800 flex items-center justify-center relative bg-white dark:bg-slate-900">
+                      {candidate.photoURL ? (
+                        <img src={candidate.photoURL || undefined} alt={candidate.displayName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-3xl">👑</span>
+                      )}
+                    </div>
+                    <div className="text-center sm:text-left space-y-1 pt-2 sm:pt-4">
+                      <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                        {campaign.domainTitle}
+                      </div>
+                      <hr className="border-slate-250 dark:border-slate-800 my-1.5 w-full max-w-xs mx-auto sm:mx-0" />
+                      <h1 className="text-xl sm:text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight uppercase">
+                        {localCampaignTitle}
+                      </h1>
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md">
+                        {candidate.bio || "A visionary claimant seeking the crown."}
+                      </p>
+                      <div className="flex items-center justify-center sm:justify-start gap-3 mt-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                          <Users className="w-3.5 h-3.5 text-amber-500" />
+                          {candidate.voteCount} Votes
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="shrink-0 z-10 relative pt-2 sm:pt-4">
+                    {userId !== candidate.userId && (
+                      <button
+                        onClick={handleJoin}
+                        disabled={hasJoined}
+                        className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          hasJoined 
+                             ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
+                             : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 cursor-pointer active:scale-95"
+                        }`}
+                      >
+                        {hasJoined ? (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Requested
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Join Campaign
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* View Details button positioned at the bottom right corner of the outer campaign cover box */}
+                <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20">
+                  <button
+                    onClick={() => setShowDetailsPage(true)}
+                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-slate-200 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
+                    title="View Details"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                    <span>View Details</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Prompt to scroll to Court Builder */}
+              <button
+                onClick={() => scrollToSection(1)}
+                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors animate-bounce font-mono text-[9px] uppercase tracking-widest cursor-pointer mt-1"
+              >
+                <span>View Court Builder</span>
+                <ChevronDown className="w-4 h-4 text-amber-500 animate-pulse" />
+              </button>
+            </div>
+          </section>
+
+          {/* SECTION 2: COURT BUILDER */}
+          <section id="section-1" className="w-full flex flex-col justify-start px-4 pt-12 pb-4">
+            <div className="w-full max-w-4xl mx-auto flex flex-col justify-start relative">
+              
+              {/* Floating Arrow to scroll back up to Candidate Hero */}
+              <button
+                onClick={() => scrollToSection(0)}
+                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors animate-bounce font-mono text-[9px] uppercase tracking-widest cursor-pointer mb-2 shrink-0"
+              >
+                <ChevronUp className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span>Back to Campaign Info</span>
+              </button>
+
+              {/* Static Outer Box containing Interactive Court Builder */}
+              <div className="w-full flex-1 flex flex-col bg-white dark:bg-[#090b11] border border-slate-200 dark:border-slate-800/80 rounded-3xl shadow-sm overflow-hidden min-h-0">
+                {/* Inner Interactive court builder graphic fully filling the section box */}
+                <div className="flex-1 min-h-0 relative w-full flex flex-col">
+                  <KingdomCourtBuilder
+                    campaignId={campaign.id}
+                    campaignTitle={campaign.domainTitle}
+                    userId={candidate.userId}
+                    userName={candidate.displayName}
+                    userPhotoURL={candidate.photoURL || null}
+                    userProfiles={userProfiles}
+                    isReadonly={userId !== candidate.userId}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* Beautiful Edit Details Modal */}
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-[110] flex justify-center items-start md:items-center bg-slate-900/60 backdrop-blur-sm p-4 md:p-6 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full font-sans text-left relative max-h-[85vh] sm:max-h-[90vh] overflow-y-auto scrollbar-thin"
+            >
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <h3 className="font-display font-black text-slate-900 dark:text-white text-lg uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-500" />
+                Customize Campaign
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 font-mono">
+                personalize the appearance of your claim to the crown
+              </p>
+
+              {editError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 mb-4">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveChanges} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Campaign Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    maxLength={100}
+                    placeholder={`${candidate.displayName}'s Campaign`}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans"
+                  />
+                  <div className="flex justify-end text-[9px] font-mono text-slate-400 mt-1 uppercase">
+                    {editTitle.length} / 100 characters
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Campaign Bio
+                  </label>
+                  <textarea
+                    value={editCoverBio}
+                    onChange={(e) => setEditCoverBio(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Describe your claim to the crown or mission statement..."
+                    className="w-full px-4 py-2 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans resize-none"
+                  />
+                  <div className="flex justify-end text-[9px] font-mono text-slate-400 mt-1 uppercase">
+                    {editCoverBio.length} / 500 characters
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
+                    Campaign Cover Banner
+                  </label>
+                  
+                  {editBannerURL ? (
+                    <div className="relative group rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-32 flex items-center justify-center">
+                      <img 
+                        src={editBannerURL || undefined} 
+                        alt="Banner Preview" 
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <label 
+                          htmlFor="banner-upload" 
+                          className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-900 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                        >
+                          Replace Banner
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setEditBannerURL("")}
+                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragging(true);
+                      }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) processFile(file);
+                      }}
+                      className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all ${
+                        isDragging 
+                          ? "border-amber-500 bg-amber-500/5" 
+                          : "border-slate-250 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-950/10"
+                      }`}
+                    >
+                      <UploadCloud className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2 animate-pulse" />
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium text-center">
+                        Drag and drop your banner image here, or
+                      </p>
+                      <label 
+                        htmlFor="banner-upload" 
+                        className="mt-2 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                      >
+                        Browse Files
+                      </label>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-2 font-mono uppercase">
+                        PNG, JPG or WEBP (Max 4MB)
+                      </p>
+                    </div>
+                  )}
+                  
+                  <input
+                    type="file"
+                    id="banner-upload"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </div>
+
+                <div className="flex gap-3 justify-end pt-4 border-t border-slate-150 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-350 cursor-pointer transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="px-5 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-md shadow-amber-500/10 flex items-center gap-1.5 transition-all"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Changes</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Media Post Viewer */}
+      <AnimatePresence>
+        {selectedMediaPost && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedMediaPost(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-xl w-full"
+            >
+              <div className="absolute -top-12 right-0">
+                <button onClick={() => setSelectedMediaPost(null)} className="p-2 text-white/70 hover:text-white bg-black/40 hover:bg-black/60 rounded-full transition-colors cursor-pointer">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <PostCard
+                post={selectedMediaPost}
+                currentUser={{ uid: userId, displayName: userName }}
+                onDelete={(deletedId) => {
+                  setPosts(posts.filter(p => p.id !== deletedId));
+                  setSelectedMediaPost(null);
+                }}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Beautiful Join Request Toast Notification */}
+      {showJoinToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 bg-emerald-500 text-white rounded-xl shadow-xl flex items-center gap-2.5 font-sans text-xs font-semibold uppercase tracking-wider max-w-md transition-all">
+          <CheckCircle className="w-5 h-5 shrink-0" />
+          <span>Request Sent to {candidate.displayName}! They can now assign you a role in their pedigree tree.</span>
+        </div>
+      )}
+    </div>
+  );
+}

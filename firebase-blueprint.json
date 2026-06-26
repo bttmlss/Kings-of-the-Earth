@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Campaign": {
+      "title": "Campaign",
+      "description": "A campaign for a specific domain title",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "domainTitle": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["live", "taken_down"] },
+        "domainType": { "type": "string" }
+      },
+      "required": ["id", "domainTitle", "creatorId", "creatorName", "createdAt", "status"]
+    },
+    "Candidate": {
+      "title": "Candidate",
+      "description": "A participant competing in a campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "voteCount": { "type": "integer" },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "campaignTitle": { "type": "string" },
+        "bannerURL": { "type": "string" }
+      },
+      "required": ["id", "userId", "displayName", "voteCount", "joinedAt"]
+    },
+    "UserProfileDoc": {
+      "title": "User Profile",
+      "description": "Persistent custom settings/bio of a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "bio": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["userId", "bio"]
+    },
+    "VoteLog": {
+      "title": "Vote Log",
+      "description": "A log of a user voting for a candidate in a campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "voterId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "votedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "voterId", "candidateId", "votedAt"]
+    },
+    "Court": {
+      "title": "Court",
+      "description": "A pedigree court of subordinates created by the user under a campaign",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "members": { "type": "array" }
+      },
+      "required": ["userId", "campaignId", "members"]
+    }
+  },
+  "firestore": {
+    "/user_profiles/{userId}": {
+      "schema": "UserProfileDoc",
+      "description": "User profile bio and personalization ledger"
+    },
+    "/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Public domain campaigns"
+    },
+    "/campaigns/{campaignId}/candidates/{candidateId}": {
+      "schema": "Candidate",
+      "description": "Competitors of a campaign"
+    },
+    "/campaigns/{campaignId}/votes/{voteId}": {
+      "schema": "VoteLog",
+      "description": "Logs of cast votes"
+    },
+    "/campaigns/{campaignId}/courts/{userId}": {
+      "schema": "Court",
+      "description": "Pedigree hierarchy court of subordinates representing a user's court"
+    }
+  }
+}

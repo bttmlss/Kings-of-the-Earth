@@ -1,0 +1,6 @@
+{
+  "name": "Kings of the Earth",
+  "description": "Kings of the Earth: A highly competitive real-time multiplayer sovereign domain ledger game. Start campaigns to claim unique mock kingdoms and gather continuous coronation votes to rule.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
