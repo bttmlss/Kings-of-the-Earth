@@ -4,7 +4,6 @@ import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Court, CourtMember } from "../types";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { 
-  Crown, 
   Users, 
   Plus, 
   Trash2, 
@@ -22,6 +21,7 @@ import {
   Menu,
   X
 } from "lucide-react";
+import Logo from "./Logo";
 import { motion, AnimatePresence } from "motion/react";
 
 interface KingdomCourtBuilderProps {
@@ -921,7 +921,6 @@ export default function KingdomCourtBuilder({
             wheel={{
               disabled: false,
               step: 0.05,
-              wheelPanning: true,
             }}
             pinch={{
               disabled: false,
@@ -1184,7 +1183,7 @@ export default function KingdomCourtBuilder({
                     className="no-pan w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-amber-400 dark:text-amber-300 flex items-center justify-center shadow-lg hover:scale-110 transition-all cursor-pointer border border-blue-500/50"
                     title="Return to King"
                   >
-                    <Crown className="w-5 h-5 fill-amber-400 dark:fill-amber-300" />
+                    <Logo className="w-5 h-5 fill-amber-400 dark:fill-amber-300" />
                   </button>
                 </div>
 
@@ -1347,7 +1346,7 @@ export default function KingdomCourtBuilder({
               >
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div className="flex items-center gap-2">
-                    <Crown className="w-5 h-5 text-amber-550 dark:text-amber-400 shrink-0" />
+                    <Logo className="w-5 h-5 text-amber-550 dark:text-amber-400 shrink-0" />
                     <div>
                       <h3 className="font-display font-bold text-xs uppercase text-slate-900 dark:text-slate-100 tracking-wider">
                         Layer Authority

@@ -15,7 +15,8 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon } from "lucide-react";
+import { Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon } from "lucide-react";
+import Logo from "./Logo";
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
@@ -69,7 +70,7 @@ function RandomCampaignSlider({ candidates, setSelectedCandidate }: { candidates
           >
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                 <Crown className="w-3.5 h-3.5" /> CAMPAIGN
+                 <Logo className="w-3.5 h-3.5" /> CAMPAIGN
               </span>
               <span className="text-[10px] text-slate-600 dark:text-slate-300 font-mono font-bold bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-full uppercase tracking-wider">
                 {c.voteCount} VOTES
@@ -261,7 +262,7 @@ export default function CampaignDetail({
     }
   }, [campaign.id, userId]);
 
-  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Hide body scrollbar when this component is mounted to prevent double-scrollbars
@@ -593,7 +594,7 @@ export default function CampaignDetail({
       <div className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[calc(100dvh-138px)] flex flex-col items-center justify-center p-8 text-center space-y-4 font-sans">
         <div className="relative">
           <div className="w-12 h-12 rounded-full border-4 border-amber-500/10 border-t-amber-500 animate-spin" />
-          <Crown className="w-5 h-5 text-amber-500 absolute inset-0 m-auto animate-pulse" />
+          <Logo className="w-5 h-5 text-amber-500 absolute inset-0 m-auto animate-pulse" />
         </div>
         <div className="space-y-1">
           <h3 className="font-display font-black text-xs uppercase tracking-widest text-slate-800 dark:text-slate-100">
@@ -737,7 +738,7 @@ export default function CampaignDetail({
                           {c.isKing && (
                             <div className="flex items-center justify-between border-t border-slate-200/50 dark:border-slate-800/50 pt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
                               <span className="text-amber-500 font-bold flex items-center gap-1 text-[9px] uppercase tracking-wider">
-                                <Crown className="w-3.5 h-3.5" /> CURRENT LEADER
+                                <Logo className="w-3.5 h-3.5" /> CURRENT LEADER
                               </span>
                             </div>
                           )}
@@ -854,7 +855,7 @@ export default function CampaignDetail({
             
             <div className="flex items-center justify-between">
               <h3 className="font-display font-black text-slate-950 dark:text-slate-200 text-xs tracking-widest uppercase flex items-center gap-2">
-                <Crown className="w-4 h-4 text-amber-500" />
+                <Logo className="w-4 h-4 text-amber-500" />
                 Campaigns
               </h3>
               <button
