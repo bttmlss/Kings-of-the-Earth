@@ -17,7 +17,8 @@ import LeaderboardScreen from "./components/LeaderboardScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import HomeFeed from "./components/HomeFeed";
 import { NotificationsScreen } from "./components/NotificationsScreen";
-import { Crown, Sparkles, LogOut, Plus, ShieldAlert, Award, Grid, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw } from "lucide-react";
+import { Sparkles, LogOut, Plus, ShieldAlert, Award, Grid, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw } from "lucide-react";
+import Logo from "./components/Logo";
 import { motion, AnimatePresence } from "motion/react";
 import PullToRefresh from "./components/PullToRefresh";
 import { useGlobalInvertedScroll } from "./hooks/useGlobalInvertedScroll";
@@ -332,7 +333,7 @@ export default function App() {
           className="flex items-center gap-2.5 cursor-pointer select-none group"
         >
           <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/10 group-hover:scale-105 transition-transform">
-            <Crown className="w-5.5 h-5.5 fill-white stroke-[2]" />
+            <Logo className="w-5.5 h-5.5" />
           </div>
           <div>
             <h1 className={`font-display font-bold text-base tracking-tight leading-none group-hover:text-amber-500 transition-colors ${
