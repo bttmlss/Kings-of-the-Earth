@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { signInWithPopup, signInAnonymously, updateProfile } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
-import { Sparkles, ShieldCheck, User } from "lucide-react";
-import Logo from "./Logo";
+import { Crown, Sparkles, ShieldCheck, User } from "lucide-react";
 import { motion } from "motion/react";
 
 interface LoginScreenProps {
@@ -93,7 +92,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         <div className="flex flex-col items-center text-center mb-8 relative z-10">
           <div className="w-16 h-16 rounded-2xl bg-amber-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20 mb-4 ring-4 ring-amber-100 animate-bounce">
-            <Logo className="w-8 h-8" />
+            <Crown className="w-8 h-8 text-white stroke-[2]" />
           </div>
           <h1 className="font-display font-black text-3xl tracking-tight text-slate-900 dark:text-white mb-1">
             Kings of the Earth
