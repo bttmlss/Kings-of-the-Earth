@@ -208,7 +208,7 @@ async function updateDailyCandle(transaction: any, db: any, campaignId: string, 
 async function startServer() {
   const app = express();
   app.set("trust proxy", 1);
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   const isProd = process.env.NODE_ENV === "production";
 
   app.get("/api/list-domains", async (req, res) => {

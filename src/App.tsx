@@ -19,6 +19,7 @@ import LeaderboardScreen from "./components/LeaderboardScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import HomeFeed from "./components/HomeFeed";
 import { NotificationsScreen } from "./components/NotificationsScreen";
+import Logo from "./components/Logo";
 import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PullToRefresh from "./components/PullToRefresh";
