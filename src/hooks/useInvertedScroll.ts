@@ -8,6 +8,32 @@ export function useInvertedScroll(containerRef: React.RefObject<HTMLElement>) {
     let startY = 0;
     let startScrollTop = 0;
 
+    let velocity = 0;
+    let animationFrameId: number | null = null;
+
+    const smoothScrollLoop = () => {
+      if (!container) return;
+      
+      velocity *= 0.92;
+      
+      if (Math.abs(velocity) < 0.1) {
+        velocity = 0;
+        animationFrameId = null;
+        return;
+      }
+      
+      const prevScrollTop = container.scrollTop;
+      container.scrollTop -= velocity;
+      
+      if (container.scrollTop === prevScrollTop) {
+        velocity = 0;
+        animationFrameId = null;
+        return;
+      }
+      
+      animationFrameId = requestAnimationFrame(smoothScrollLoop);
+    };
+
     const handleWheel = (e: WheelEvent) => {
       // Ignore if scrolling inside a nested scrollable element that isn't the container
       let target = e.target as HTMLElement | null;
@@ -29,7 +55,17 @@ export function useInvertedScroll(containerRef: React.RefObject<HTMLElement>) {
       if (!shouldInvert) return;
       
       e.preventDefault();
-      container.scrollTop -= e.deltaY;
+      
+      // Accumulate velocity
+      velocity += e.deltaY * 0.35;
+      
+      const maxVel = 45;
+      if (velocity > maxVel) velocity = maxVel;
+      if (velocity < -maxVel) velocity = -maxVel;
+
+      if (animationFrameId === null) {
+        animationFrameId = requestAnimationFrame(smoothScrollLoop);
+      }
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -59,14 +95,24 @@ export function useInvertedScroll(containerRef: React.RefObject<HTMLElement>) {
       container.scrollTop = startScrollTop + deltaY;
     };
 
+    const isMobileTouch = typeof window !== 'undefined' && 
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
     container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    if (!isMobileTouch) {
+      container.addEventListener('touchstart', handleTouchStart, { passive: true });
+      container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    }
 
     return () => {
       container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (!isMobileTouch) {
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchmove', handleTouchMove);
+      }
     };
   }, [containerRef]);
 }

@@ -190,7 +190,6 @@ export default function CampaignDetail({
   const [showOptInPrompt, setShowOptInPrompt] = useState(false);
   const [showQuitPrompt, setShowQuitPrompt] = useState(false);
   const [activeTab, setActiveTab] = useState<"leaderboard" | "court">("leaderboard");
-  const [activeSection, setActiveSection] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [creatorCourt, setCreatorCourt] = useState<any | null>(null);
@@ -272,23 +271,6 @@ export default function CampaignDetail({
     };
   }, []);
 
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const { scrollTop, clientHeight } = containerRef.current;
-    // Calculate which section is most visible
-    const index = Math.round(scrollTop / clientHeight);
-    if (index !== activeSection && index >= 0 && index <= 1) {
-      setActiveSection(index);
-    }
-  };
-
-  const scrollToSection = (index: number) => {
-    const el = document.getElementById(`section-${index}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   const executeLeave = async () => {
     setIsLeaving(true);
     try {
@@ -327,7 +309,6 @@ export default function CampaignDetail({
     if (containerRef.current) {
       containerRef.current.scrollTo(0, 0);
     }
-    setActiveSection(0);
   }, [campaign.id]);
 
   // Listen to creator's court (pedigree)
@@ -624,9 +605,8 @@ export default function CampaignDetail({
   return (
     <div 
       ref={containerRef}
-      onScroll={handleScroll}
       id="campaign-detail-container"
-      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900 snap-y snap-proximity"
+      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
@@ -752,24 +732,8 @@ export default function CampaignDetail({
         </div>
       )}
 
-      {/* Side Scroll Indicator */}
-      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-3">
-        {[0, 1].map((idx) => (
-          <button
-            key={idx}
-            onClick={() => scrollToSection(idx)}
-            className={`w-2 h-2 rounded-full transition-all duration-300 ${
-              activeSection === idx 
-                ? "bg-amber-500 scale-[1.3]" 
-                : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
-            }`}
-            aria-label={`Go to section ${idx + 1}`}
-          />
-        ))}
-      </div>
-      
       {/* SECTION 1: HEADER & BALLOT */}
-      <section id="section-0" className="w-full flex flex-col pt-4 pb-4 shrink-0 px-4 snap-start">
+      <section id="section-0" className="w-full flex flex-col pt-4 pb-4 shrink-0 px-4">
         <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-4">
           {/* Elegant Navigation Bar */}
           <div className="flex items-center justify-between py-1 shrink-0">
@@ -887,7 +851,7 @@ export default function CampaignDetail({
       </section>
 
       {/* SECTION 2: DOMAIN PANELS (Leaderboard & Court) */}
-      <section id="section-1" className="w-full px-4 pt-12 pb-4 shrink-0 flex flex-col snap-start">
+      <section id="section-1" className="w-full px-4 pt-12 pb-4 shrink-0 flex flex-col">
         <div className="w-full max-w-3xl mx-auto flex flex-col">
           {/* TABS SELECTION BAR */}
           <div className="flex border-b border-slate-200 dark:border-slate-800/80 mb-6 font-mono text-xs font-black uppercase tracking-widest gap-2 shrink-0">

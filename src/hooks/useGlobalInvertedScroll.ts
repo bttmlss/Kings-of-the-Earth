@@ -2,6 +2,15 @@ import { useEffect } from 'react';
 
 export function useGlobalInvertedScroll() {
   useEffect(() => {
+    const isSnapContainer = (el: HTMLElement): boolean => {
+      if (el.id === 'profile-screen-container') return true;
+      const style = window.getComputedStyle(el);
+      const scrollSnapType = style.scrollSnapType || (style as any).webkitScrollSnapType || '';
+      if (scrollSnapType && scrollSnapType !== 'none') return true;
+      if (el.className && typeof el.className === 'string' && (el.className.includes('snap-') || el.className.includes('scroll-snap'))) return true;
+      return false;
+    };
+
     const getScrollParent = (node: HTMLElement | null): HTMLElement | null => {
       if (!node) return null;
       if (node.nodeType !== 1) return getScrollParent(node.parentElement);
@@ -11,6 +20,7 @@ export function useGlobalInvertedScroll() {
         if (scrollingEl && scrollingEl.scrollHeight > scrollingEl.clientHeight + 1) {
           const bodyStyle = window.getComputedStyle(document.body);
           if (bodyStyle.overflowY !== 'hidden' && bodyStyle.overflow !== 'hidden') {
+            if (isSnapContainer(scrollingEl)) return null;
             return scrollingEl;
           }
         }
@@ -21,6 +31,7 @@ export function useGlobalInvertedScroll() {
         const style = window.getComputedStyle(node);
         const overflowY = style.overflowY;
         if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+          if (isSnapContainer(node)) return null;
           return node;
         }
       }
@@ -33,6 +44,34 @@ export function useGlobalInvertedScroll() {
     let activeScrollParent: HTMLElement | null = null;
     let isTouching = false;
 
+    let velocity = 0;
+    let animationFrameId: number | null = null;
+    let currentScrollParent: HTMLElement | null = null;
+
+    const smoothScrollLoop = () => {
+      if (!currentScrollParent) return;
+      
+      // Decelerate with a smooth friction coefficient
+      velocity *= 0.92;
+      
+      if (Math.abs(velocity) < 0.1) {
+        velocity = 0;
+        animationFrameId = null;
+        return;
+      }
+      
+      const prevScrollTop = currentScrollParent.scrollTop;
+      currentScrollParent.scrollTop -= velocity;
+      
+      if (currentScrollParent.scrollTop === prevScrollTop) {
+        velocity = 0;
+        animationFrameId = null;
+        return;
+      }
+      
+      animationFrameId = requestAnimationFrame(smoothScrollLoop);
+    };
+
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
@@ -44,7 +83,27 @@ export function useGlobalInvertedScroll() {
       
       if (scrollParent) {
         e.preventDefault();
-        scrollParent.scrollTop -= e.deltaY;
+        
+        if (currentScrollParent !== scrollParent) {
+          if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+          }
+          currentScrollParent = scrollParent;
+          velocity = 0;
+        }
+
+        // Accumulate velocity with a responsive factor
+        velocity += e.deltaY * 0.35;
+        
+        // Bound max velocity to keep it predictable
+        const maxVel = 45;
+        if (velocity > maxVel) velocity = maxVel;
+        if (velocity < -maxVel) velocity = -maxVel;
+
+        if (animationFrameId === null) {
+          animationFrameId = requestAnimationFrame(smoothScrollLoop);
+        }
       }
     };
 
@@ -82,18 +141,29 @@ export function useGlobalInvertedScroll() {
       activeScrollParent = null;
     };
 
+    const isMobileTouch = typeof window !== 'undefined' && 
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
     window.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-    window.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
-    window.addEventListener('touchend', handleTouchEnd, { passive: true, capture: true });
-    window.addEventListener('touchcancel', handleTouchEnd, { passive: true, capture: true });
+    
+    if (!isMobileTouch) {
+      window.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
+      window.addEventListener('touchend', handleTouchEnd, { passive: true, capture: true });
+      window.addEventListener('touchcancel', handleTouchEnd, { passive: true, capture: true });
+    }
 
     return () => {
       window.removeEventListener('wheel', handleWheel, { capture: true });
-      window.removeEventListener('touchstart', handleTouchStart, { capture: true });
-      window.removeEventListener('touchmove', handleTouchMove, { capture: true });
-      window.removeEventListener('touchend', handleTouchEnd, { capture: true });
-      window.removeEventListener('touchcancel', handleTouchEnd, { capture: true });
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (!isMobileTouch) {
+        window.removeEventListener('touchstart', handleTouchStart, { capture: true });
+        window.removeEventListener('touchmove', handleTouchMove, { capture: true });
+        window.removeEventListener('touchend', handleTouchEnd, { capture: true });
+        window.removeEventListener('touchcancel', handleTouchEnd, { capture: true });
+      }
     };
   }, []);
 }

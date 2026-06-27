@@ -60,26 +60,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
   const [showAllCampaignsModal, setShowAllCampaignsModal] = useState(false);
   const isGuest = user.uid.startsWith("local_");
 
-  // Snapping / Scroll state
-  const [activeSection, setActiveSection] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeout = useRef<NodeJS.Timeout>();
-
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const { scrollTop, clientHeight } = containerRef.current;
-    const index = Math.round(scrollTop / clientHeight);
-    if (index !== activeSection && index >= 0 && index <= 1) {
-      setActiveSection(index);
-    }
-  };
-
-  const scrollToSection = (index: number) => {
-    const el = document.getElementById(`section-${index}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   // Real-time Voting Index data for Q3 Widget
   const {
@@ -500,9 +481,8 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
   return (
     <div 
       ref={containerRef}
-      onScroll={handleScroll}
       id="profile-screen-container"
-      className="fixed inset-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[100dvh] overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900 snap-y snap-proximity"
+      className="fixed inset-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[100dvh] overflow-y-scroll snap-y snap-mandatory no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
@@ -530,24 +510,8 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
         </button>
       )}
 
-      {/* Side Scroll Indicator */}
-      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-3">
-        {[0, 1].map((idx) => (
-          <button
-            key={idx}
-            onClick={() => scrollToSection(idx)}
-            className={`w-2 h-2 rounded-full transition-all duration-300 ${
-              activeSection === idx 
-                ? "bg-amber-500 scale-[1.3]" 
-                : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
-            }`}
-            aria-label={`Go to section ${idx + 1}`}
-          />
-        ))}
-      </div>
-
       {/* SECTION 1: HEADER & STATS */}
-      <section id="section-0" className="w-full flex flex-col justify-start px-4 shrink-0 pt-[72px] sm:pt-[80px] pb-0 snap-start">
+      <section id="section-0" className="w-full h-[100dvh] snap-start flex flex-col justify-start px-4 shrink-0 pt-[72px] sm:pt-[80px] pb-0 overflow-hidden">
         <div className="w-full max-w-5xl mx-auto flex flex-col justify-start gap-4 pb-4 pt-4 relative">
           
       {/* Profile summary block wrapped for tight spacing */}
@@ -612,23 +576,23 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
               </div>
             </div>
           </div>
-        </div>
 
-        {!isOwnProfile && auth.currentUser && (
-          <button
-            onClick={handleFollowRequest}
-            disabled={isFollowLoading}
-            className={`absolute top-4 right-4 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
-              followStatus === "accepted" 
-                ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-300"
-                : followStatus === "pending"
-                ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20"
-            }`}
-          >
-            {followStatus === "accepted" ? "Following" : followStatus === "pending" ? "Requested" : "Follow"}
-          </button>
-        )}
+          {!isOwnProfile && auth.currentUser && (
+            <button
+              onClick={handleFollowRequest}
+              disabled={isFollowLoading}
+              className={`absolute top-4 right-4 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                followStatus === "accepted" 
+                  ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-300"
+                  : followStatus === "pending"
+                  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                  : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20"
+              }`}
+            >
+              {followStatus === "accepted" ? "Following" : followStatus === "pending" ? "Requested" : "Follow"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Profile Actions: Two even-sized bars under the card */}
@@ -677,12 +641,6 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                 <Layers className="w-4 h-4 text-slate-400" />
                 Active Campaigns
               </h3>
-              <button
-                onClick={() => setShowAllCampaignsModal(true)}
-                className="text-[10px] text-amber-600 dark:text-amber-500 font-extrabold hover:underline uppercase tracking-wider cursor-pointer"
-              >
-                See All →
-              </button>
             </div>
 
             {isLoading ? (
@@ -695,7 +653,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4 w-full">
-                <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 w-full">
                   {Array.from({ length: 6 }).map((_, index) => {
                     if (index === 5) {
                       // Last card: "See All"
@@ -703,13 +661,13 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                         <button
                           key="see-all-grid-card"
                           onClick={() => setShowAllCampaignsModal(true)}
-                          className="w-full h-[100px] sm:h-[110px] rounded-xl border border-dashed border-amber-500/40 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] hover:bg-amber-500/[0.1] hover:border-amber-500/60 transition-all flex flex-col items-center justify-center gap-1 text-center cursor-pointer group"
+                          className="w-full h-[80px] sm:h-[88px] rounded-xl border border-dashed border-amber-500/40 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] hover:bg-amber-500/[0.1] hover:border-amber-500/60 transition-all flex flex-col items-center justify-center gap-0.5 text-center cursor-pointer group"
                         >
-                          <Layers className="w-4.5 h-4.5 text-amber-500 group-hover:scale-110 transition-transform" />
-                          <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block mt-1">
+                          <Layers className="w-3.5 h-3.5 text-amber-500 group-hover:scale-110 transition-transform" />
+                          <span className="text-[8px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block mt-0.5">
                             See All
                           </span>
-                          <span className="text-[7px] font-bold text-amber-500/60 uppercase tracking-wider block">
+                          <span className="text-[6.5px] font-bold text-amber-500/60 uppercase tracking-wider block">
                             {activeCampaignList.length} Domains
                           </span>
                         </button>
@@ -736,41 +694,41 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                         <div
                           key={actualCamp.id}
                           onClick={() => onEnterCampaign(actualCamp, user.uid)}
-                          className="w-full bg-slate-200 dark:bg-slate-700 border border-slate-400 dark:border-slate-500 p-2 rounded-xl shadow-xs hover:shadow-sm hover:border-amber-400 dark:hover:border-amber-500 transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between h-[100px] sm:h-[110px]"
+                          className="w-full bg-slate-200 dark:bg-slate-700 border border-slate-400 dark:border-slate-500 p-1.5 rounded-xl shadow-xs hover:shadow-sm hover:border-amber-400 dark:hover:border-amber-500 transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between h-[80px] sm:h-[88px]"
                         >
-                          <div className="space-y-1 text-left">
+                          <div className="space-y-0.5 text-left">
                             <div className="flex items-center justify-between">
-                              <span className="text-[7px] font-black px-1 py-0.5 bg-slate-100 dark:bg-slate-900 text-slate-500 rounded flex items-center gap-0.5 uppercase tracking-wider border border-slate-300/10">
+                              <span className="text-[6.5px] font-black px-1 py-0.5 bg-slate-100 dark:bg-slate-900 text-slate-500 rounded flex items-center gap-0.5 uppercase tracking-wider border border-slate-300/10">
                                 <span>{catEmoji}</span> {catLabel}
                               </span>
                             </div>
 
-                            <div className="text-left">
-                              <span className="text-[8px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block mb-0.5 truncate">
+                            <div className="text-left leading-none">
+                              <span className="text-[7px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block mb-0.5 truncate">
                                 {cleanTitle}
                               </span>
-                              <h4 className="font-display font-black text-[#0f172a] dark:text-slate-100 text-[10px] leading-tight uppercase group-hover:text-[#b45309] dark:group-hover:text-amber-500 transition-colors line-clamp-2">
+                              <h4 className="font-display font-black text-[#0f172a] dark:text-slate-100 text-[8.5px] leading-tight uppercase group-hover:text-[#b45309] dark:group-hover:text-amber-500 transition-colors line-clamp-1">
                                 {stats?.campaignTitle || `${user.displayName}'s Campaign`}
                               </h4>
                             </div>
                           </div>
 
-                          <div className="pt-1 border-t border-slate-300 dark:border-slate-650 flex items-center justify-center text-[8px]">
-                            <div className="flex items-center gap-1 bg-slate-300/20 dark:bg-slate-900/40 px-1.5 py-0.5 rounded border border-slate-300/10 w-full justify-center">
-                              <span className="text-[7px] font-medium text-slate-400 uppercase tracking-wider">
+                          <div className="pt-0.5 border-t border-slate-300 dark:border-slate-650 flex items-center justify-center text-[7px]">
+                            <div className="flex items-center gap-1 bg-slate-300/20 dark:bg-slate-900/40 px-1 py-0.5 rounded border border-slate-300/10 w-full justify-center">
+                              <span className="text-[6.5px] font-medium text-slate-400 uppercase tracking-wider">
                                 {stats ? "Standing:" : "Role:"}
                               </span>
                               <span className="font-bold text-slate-750 dark:text-slate-300">
                                 {stats ? (
                                   stats.isLeader ? (
-                                    <span className="text-amber-500 flex items-center gap-0.5 font-bold uppercase tracking-wide text-[7px]">
+                                    <span className="text-amber-500 flex items-center gap-0.5 font-bold uppercase tracking-wide text-[6.5px]">
                                       🏆 Champ
                                     </span>
                                   ) : (
                                     `#${stats.rank}`
                                   )
                                 ) : (
-                                  <span className="text-slate-500 flex items-center gap-0.5 font-bold uppercase tracking-wide text-[7px]">
+                                  <span className="text-slate-500 flex items-center gap-0.5 font-bold uppercase tracking-wide text-[6.5px]">
                                     VISITOR
                                   </span>
                                 )}
@@ -787,10 +745,10 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                     return (
                       <div
                         key={`placeholder-${index}`}
-                        className="w-full h-[100px] sm:h-[110px] rounded-xl border border-dashed border-slate-300 dark:border-slate-600/50 bg-slate-100/30 dark:bg-slate-800/10 flex flex-col items-center justify-center text-center opacity-40 select-none"
+                        className="w-full h-[80px] sm:h-[88px] rounded-xl border border-dashed border-slate-300 dark:border-slate-600/50 bg-slate-100/30 dark:bg-slate-800/10 flex flex-col items-center justify-center text-center opacity-40 select-none"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 mb-1" />
-                        <span className="text-[8px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none">
+                        <Sparkles className="w-3 h-3 text-slate-400 dark:text-slate-500 mb-0.5" />
+                        <span className="text-[7px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none">
                           Vacant
                         </span>
                       </div>
@@ -1040,23 +998,13 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
         </div>
       </section>
 
-      {(!isOwnProfile && isProfilePrivate) ? null : (
-        <div className="w-full max-w-5xl mx-auto px-4 shrink-0">
-          <div className="relative flex py-4 items-center">
-            <div className="flex-grow border-t border-slate-200 dark:border-slate-800/80"></div>
-            <span className="flex-shrink mx-4 text-[8px] font-mono uppercase tracking-[0.2em] font-bold text-slate-400 dark:text-slate-500 bg-[#fcfcfd] dark:bg-[#0b0f19] px-2 select-none">
-              PAGE BREAK
-            </span>
-            <div className="flex-grow border-t border-slate-200 dark:border-slate-800/80"></div>
-          </div>
-        </div>
-      )}
+
 
       {(!isOwnProfile && isProfilePrivate) ? null : (
         <>
         {/* SECTION 2: THE VOTING INDEX */}
-        <section id="section-1" className="w-full flex flex-col justify-start px-4 shrink-0 pt-0 pb-[88px] sm:pb-[96px] snap-start">
-           <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-6 pb-8">
+        <section id="section-1" className="w-full h-[100dvh] snap-start flex flex-col justify-start px-4 shrink-0 pt-0 pb-[88px] sm:pb-[96px] overflow-hidden">
+           <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-6 pb-8 h-full">
 
             {/* User Statistics 4-Quadrant High-Fidelity Spreadsheet Dashboard */}
             <div className="space-y-4">

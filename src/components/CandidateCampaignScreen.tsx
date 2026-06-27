@@ -99,7 +99,6 @@ export default function CandidateCampaignScreen({
   }, [candidate.userId, campaign.id]);
 
   // Snapping / Scroll state
-  const [activeSection, setActiveSection] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -162,16 +161,6 @@ export default function CandidateCampaignScreen({
     setEditCoverBio(candidate.bio || "");
     setEditBio(candidate.bio || "");
   }, [candidate]);
-
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const { scrollTop, clientHeight } = containerRef.current;
-    // Calculate current snapped index
-    const index = Math.round(scrollTop / clientHeight);
-    if (index !== activeSection && index >= 0 && index <= 1) {
-      setActiveSection(index);
-    }
-  };
 
   const scrollToSection = (index: number) => {
     const el = document.getElementById(`section-${index}`);
@@ -285,7 +274,6 @@ export default function CandidateCampaignScreen({
   return (
     <div 
       ref={containerRef}
-      onScroll={handleScroll}
       id="candidate-campaign-container"
       className="fixed top-[73px] bottom-[65px] left-0 right-0 z-[35] bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
@@ -416,22 +404,6 @@ export default function CandidateCampaignScreen({
         </div>
       ) : (
         <>
-          {/* Side Scroll Indicator */}
-          <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[50] flex flex-col gap-3">
-            {[0, 1].map((idx) => (
-              <button
-                key={idx}
-                onClick={() => scrollToSection(idx)}
-                className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                  activeSection === idx 
-                    ? "bg-amber-500 scale-[1.3]" 
-                    : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
-                }`}
-                aria-label={`Go to section ${idx + 1}`}
-              />
-            ))}
-          </div>
-
           {/* SECTION 1: CANDIDATE INFO HERO */}
           <section id="section-0" className="w-full flex flex-col justify-center py-4 px-4 relative">
             <div className="w-full max-w-3xl mx-auto flex flex-col gap-4 justify-center items-center">
