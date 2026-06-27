@@ -220,25 +220,26 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
             }
 
             const p = playerMap[cand.userId];
-            p.totalVotes += cand.voteCount;
-            p.kingdomsContested += 1;
-            if (isLeader) {
-              p.crownsHeld += 1;
-            }
+            if (cand.voteCount > 0) {
+              p.totalVotes += cand.voteCount;
+              p.kingdomsContested += 1;
+              if (isLeader) {
+                p.crownsHeld += 1;
+              }
 
-            // Exclude empty campaigns or non-meaningful additions, but standard is fine
-            p.kingdoms.push({
-              domainTitle: camp.domainTitle,
-              voteCount: cand.voteCount,
-              campaignId: camp.id,
-              isLeader: isLeader,
-            });
-
-            if (!p.bestKingdom || cand.voteCount > p.bestKingdom.voteCount) {
-              p.bestKingdom = {
+              p.kingdoms.push({
                 domainTitle: camp.domainTitle,
                 voteCount: cand.voteCount,
-              };
+                campaignId: camp.id,
+                isLeader: isLeader,
+              });
+
+              if (!p.bestKingdom || cand.voteCount > p.bestKingdom.voteCount) {
+                p.bestKingdom = {
+                  domainTitle: camp.domainTitle,
+                  voteCount: cand.voteCount,
+                };
+              }
             }
           });
         });

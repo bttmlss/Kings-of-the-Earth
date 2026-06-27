@@ -15,6 +15,8 @@ export interface Post {
   likes?: string[];
   comments?: { id: string; userId: string; userDisplayName: string; text: string; createdAt: number }[];
   createdAt: any;
+  campaignId?: string;
+  campaignTitle?: string;
 }
 
 interface PostCardProps {
@@ -151,12 +153,19 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, o
           <img 
             src={post.userPhotoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} 
             alt={post.userDisplayName}
-            className="w-8 h-8 rounded-full object-cover ring-2 ring-transparent group-hover:ring-amber-500 transition-all"
+            className="w-9 h-9 rounded-full object-cover ring-2 ring-transparent group-hover:ring-amber-500 transition-all"
             onError={(e) => { e.currentTarget.src = "https://ui-avatars.com/api/?name=User&background=random"; }}
           />
-          <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-amber-500 transition-colors">
-            {post.userDisplayName}
-          </span>
+          <div className="flex flex-col items-start text-left">
+            <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-amber-500 transition-colors leading-tight">
+              {post.userDisplayName}
+            </span>
+            {post.campaignTitle && (
+              <span className="text-[10px] text-amber-600/90 dark:text-amber-400/90 font-mono font-normal uppercase tracking-wider leading-none mt-0.5">
+                {post.campaignTitle}
+              </span>
+            )}
+          </div>
         </button>
         
         {currentUser?.uid === post.userId && (

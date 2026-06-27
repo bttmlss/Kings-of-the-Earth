@@ -311,22 +311,26 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
       
       const token = await auth.currentUser?.getIdToken();
       
-      if (token) {
-        const userProfileRef = doc(db, "user_profiles", user.uid);
-        await updateDoc(userProfileRef, {
-          displayName: trimmedName,
-          bio: trimmedBio,
-          photoURL: trimmedPhoto || null
-        }).catch(async () => {
-           await setDoc(userProfileRef, {
-              userId: user.uid,
-              displayName: trimmedName,
-              photoURL: trimmedPhoto || null,
-              bio: trimmedBio
-           }, { merge: true });
+      if (token && !isGuest) {
+        const res = await fetch("/api/update-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            displayName: trimmedName,
+            photoURL: trimmedPhoto || null,
+            bio: trimmedBio
+          })
         });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to update profile via API");
+        }
       } else {
-        // Fallback for purely local guest users without backend profile
+        // Fallback for purely local guest users or local storage
         const userProfileRef = doc(db, "user_profiles", user.uid);
         await setDoc(userProfileRef, {
           userId: user.uid,
@@ -417,26 +421,29 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
             if (snap.exists()) {
               const userCandidate = snap.data() as Candidate;
 
-              // Fetch all other candidates to calculate rank
+              // Fetch all other candidates to calculate rank based only on those with > 0 votes
               const candsRef = collection(db, "campaigns", camp.id, "candidates");
               const q = query(candsRef, orderBy("voteCount", "desc"));
               const allCandsSnap = await getDocs(q);
-
-              const allCands: Candidate[] = [];
+ 
+              const leaderboardCands: Candidate[] = [];
               allCandsSnap.forEach((d) => {
-                allCands.push(d.data() as Candidate);
+                const candData = d.data() as Candidate;
+                if (candData.voteCount > 0) {
+                  leaderboardCands.push(candData);
+                }
               });
-
-              const index = allCands.findIndex((c) => c.userId === user.uid);
-              const rank = index !== -1 ? index + 1 : 1;
-              const highestVotes = allCands.length > 0 ? allCands[0].voteCount : 0;
+ 
+              const index = leaderboardCands.findIndex((c) => c.userId === user.uid);
+              const rank = userCandidate.voteCount > 0 && index !== -1 ? index + 1 : 0;
+              const highestVotes = leaderboardCands.length > 0 ? leaderboardCands[0].voteCount : 0;
               const isLeader = userCandidate.voteCount === highestVotes && userCandidate.voteCount > 0;
-
+ 
               cumVotes += userCandidate.voteCount;
               if (isLeader) {
                 cumCrowns += 1;
               }
-
+ 
               matchingContests.push({
                 campaignId: camp.id,
                 domainTitle: camp.domainTitle,
@@ -734,7 +741,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                                       🏆 Champ
                                     </span>
                                   ) : (
-                                    `#${stats.rank}`
+                                    stats.rank > 0 ? `#${stats.rank}` : "UNRANKED"
                                   )
                                 ) : (
                                   <span className="text-slate-500 flex items-center gap-0.5 font-bold uppercase tracking-wide text-[6.5px]">
@@ -1371,7 +1378,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                                       </span>
                                     ) : (
                                       <span className="font-bold text-slate-600 dark:text-slate-300">
-                                        #{stats.rank}
+                                        {stats.rank > 0 ? `#${stats.rank}` : "UNRANKED"}
                                       </span>
                                     )
                                   ) : (

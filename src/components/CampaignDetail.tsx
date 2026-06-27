@@ -24,102 +24,7 @@ import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import CampaignFeed from "./CampaignFeed";
 import CreatePostModal from "./CreatePostModal";
 import CandidateCampaignScreen from "./CandidateCampaignScreen";
-
-function RandomCampaignSlider({ candidates, setSelectedCandidate }: { candidates: any[], setSelectedCandidate: (c: any) => void }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-
-  useEffect(() => {
-    if (candidates.length <= 1 || !isAutoPlaying) return;
-    const interval = setInterval(() => {
-      setCurrentIndex(prev => (prev + 1) % candidates.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [candidates.length, isAutoPlaying]);
-
-  if (candidates.length === 0) {
-    return (
-      <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
-        [ No other active campaigns available ]
-      </div>
-    );
-  }
-
-  const c = candidates[currentIndex];
-
-  const handlePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsAutoPlaying(false);
-    setCurrentIndex(prev => (prev - 1 + candidates.length) % candidates.length);
-  };
-
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsAutoPlaying(false);
-    setCurrentIndex(prev => (prev + 1) % candidates.length);
-  };
-
-  return (
-    <div className="relative w-full h-[90px] flex items-center select-none">
-      {/* Navigation Left Arrow */}
-      {candidates.length > 1 && (
-        <button
-          type="button"
-          onClick={handlePrev}
-          className="absolute left-0 z-20 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-all shadow-sm cursor-pointer"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
-      )}
-
-      {/* Navigation Right Arrow */}
-      {candidates.length > 1 && (
-        <button
-          type="button"
-          onClick={handleNext}
-          className="absolute right-0 z-20 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-all shadow-sm cursor-pointer"
-        >
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-      )}
-
-      <div className="w-full h-full px-8">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={c.id || c.userId || currentIndex}
-            initial={{ x: 30, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -30, opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
-            className="w-full h-full"
-          >
-            <div
-              onClick={() => setSelectedCandidate(c)}
-              className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3.5 rounded-xl hover:border-amber-500/50 transition-all text-left space-y-1.5 group cursor-pointer flex flex-col justify-center shadow-xs"
-            >
-              <div className="flex justify-between items-center">
-                <span className="text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
-                   <Crown className="w-3.5 h-3.5 text-amber-500" /> FEATURED CAMPAIGN
-                </span>
-                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono font-bold bg-slate-100/80 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  {c.voteCount} VOTES
-                </span>
-              </div>
-              <div>
-                <h4 className="font-display font-black text-xs sm:text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-amber-500 transition-colors uppercase leading-tight">
-                  {c.campaignTitle || `${c.displayName}'s Campaign`}
-                </h4>
-                <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate uppercase mt-0.5 font-bold tracking-wider">
-                  {c.isKing ? "CURRENT LEADER" : `CANDIDATE • ${c.displayName}`}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
+import Campaign3DCarousel from "./Campaign3DCarousel";
 
 interface CampaignDetailProps {
   campaign: Campaign;
@@ -336,9 +241,10 @@ export default function CampaignDetail({
     }
   };
 
-  const userCandidateIndex = candidates.findIndex((c) => c.userId === userId);
-  const userDetailRank = userCandidateIndex !== -1 ? userCandidateIndex + 1 : null;
-  const totalCandidates = candidates.length;
+  const leaderboardCandidates = candidates.filter((c) => c.voteCount > 0);
+  const userLeaderboardIndex = leaderboardCandidates.findIndex((c) => c.userId === userId);
+  const userDetailRank = userLeaderboardIndex !== -1 ? userLeaderboardIndex + 1 : null;
+  const totalCandidates = leaderboardCandidates.length;
 
   // Reset scroll to top instantly when campaign changes
   useEffect(() => {
@@ -884,8 +790,10 @@ export default function CampaignDetail({
                   );
                 }
                 return (
-                  <RandomCampaignSlider
+                  <Campaign3DCarousel
                     candidates={candidates}
+                    userProfiles={userProfiles || []}
+                    onViewProfile={onViewProfile || (() => {})}
                     setSelectedCandidate={setSelectedCandidate}
                   />
                 );
@@ -973,7 +881,7 @@ export default function CampaignDetail({
                 )}
               </div>
 
-              {candidates.length === 0 ? (
+              {leaderboardCandidates.length === 0 ? (
                 <div className="p-10 text-center bg-slate-50 dark:bg-slate-900/20 border border-dashed border-slate-250 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 text-xs font-mono shrink-0">
                   📯 [ FLAPS EMPTY · NO REGENTS LOGGED IN THE LEDGER ]
                 </div>
@@ -990,7 +898,7 @@ export default function CampaignDetail({
 
                   <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-slate-50 dark:bg-[#07080a]">
                     <AnimatePresence mode="popLayout">
-                    {candidates.slice(0, 100).map((cand, index) => {
+                    {leaderboardCandidates.slice(0, 100).map((cand, index) => {
                       const isWinner = cand.voteCount === highestScore && cand.voteCount > 0;
                       const place = index + 1;
                       const paddedPlace = place < 10 ? `0${place}` : `${place}`;

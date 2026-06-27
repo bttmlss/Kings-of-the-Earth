@@ -100,6 +100,100 @@ filter.isProfane = function(text: string): boolean {
 
 const validationCache = new Map<string, { result: any, expiry: number }>();
 
+async function validateNameAndBioWithGemini(displayName: string, bio?: string | null): Promise<{ blocked: boolean, reason: string }> {
+  const cacheKey = `title_val:${(displayName || "").trim().toLowerCase()}:${(bio || "").trim().toLowerCase()}`;
+  const cached = validationCache.get(cacheKey);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.result;
+  }
+
+  try {
+    const ai = getGeminiClient();
+    
+    // Quick static local check for common royal titles in English to save API cost/time if obviously blocked
+    const lowercaseName = (displayName || "").toLowerCase();
+    const localBlockedTitles = [
+      "king", "queen", "lord", "emperor", "empress", "prince", "princess", 
+      "monarch", "sovereign", "tsar", "czar", "kaiser", "pharaoh", "sultan", 
+      "caliph", "sheikh", "raja", "maharaja", "samrat", "duke", "duchess"
+    ];
+    
+    // Check if the name literally is or starts with/contains a royal title as a word
+    const words = lowercaseName.split(/\s+/);
+    for (const word of words) {
+      if (localBlockedTitles.includes(word)) {
+        const res = {
+          blocked: true,
+          reason: `Your name contains the restricted royal/monarch title '${word}' (not allowed).`
+        };
+        validationCache.set(cacheKey, { result: res, expiry: Date.now() + 1000 * 60 * 60 * 24 });
+        return res;
+      }
+    }
+    
+    // Now use Gemini to check for variations, translated titles in other languages, or sneaky title claims
+    const prompt = `Analyze the following profile details for restricted royal, noble, monarch, or sovereign titles (such as King, Queen, Lord, Emperor, Empress, Prince, Princess, Duke, Duchess, Baron, Monarch, Tsar, Czar, Kaiser, Pharaoh, Sultan, Sheikh, Caliph, Raja, Maharaja, Samrat, etc.) in ANY language (including English, Spanish, French, German, Italian, Arabic, Russian, Japanese, Chinese, Hindi, Portuguese, Turkish, etc.).
+
+Display Name: "${displayName}"
+Bio: "${bio || ''}"
+
+Rules:
+1. Block if the Display Name or Bio contains a royal, sovereign, monarch, or noble title in any language or translation/transliteration (e.g., "Rey", "Reine", "König", "Prinz", "Tenno", "Sultan", "Malik", etc.).
+2. Do NOT block if the title is merely a standard part of a common non-title name (e.g., "Kingsley", "Kingston", "Sarah Lord" where "Lord" is simply a standard last name, "Queen" as a common non-title term). Only block if it is used or presented as a royal/noble title, prefix, claim of royalty, or sneaky bypass.
+3. Block if there is any sneaky attempts to bypass (e.g., "k-i-n-g", "q.u.e.e.n").
+
+Return a JSON object with:
+{
+  "blocked": boolean,
+  "reason": "Clear explanation of why it is blocked (in English), or empty string if allowed"
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            blocked: { type: Type.BOOLEAN },
+            reason: { type: Type.STRING },
+          },
+          required: ["blocked", "reason"],
+        }
+      }
+    });
+
+    const resultText = response.text?.trim() || "{}";
+    const result = JSON.parse(resultText);
+    const finalRes = {
+      blocked: !!result.blocked,
+      reason: result.reason || ""
+    };
+    validationCache.set(cacheKey, { result: finalRes, expiry: Date.now() + 1000 * 60 * 60 * 24 });
+    return finalRes;
+  } catch (err) {
+    console.error("Error in validateNameAndBioWithGemini:", err);
+    // Fallback check
+    const lowercaseName = (displayName || "").toLowerCase();
+    const localBlockedTitles = [
+      "king", "queen", "lord", "emperor", "empress", "prince", "princess", 
+      "monarch", "sovereign", "tsar", "czar", "kaiser", "pharaoh", "sultan", 
+      "caliph", "sheikh", "raja", "maharaja", "samrat", "duke", "duchess"
+    ];
+    const words = lowercaseName.split(/\s+/);
+    for (const word of words) {
+      if (localBlockedTitles.includes(word)) {
+        return {
+          blocked: true,
+          reason: `Your name contains the restricted royal/monarch title '${word}'.`
+        };
+      }
+    }
+    return { blocked: false, reason: "" };
+  }
+}
+
 // Rate limiters
 const generalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
@@ -650,8 +744,13 @@ async function startServer() {
          finalPhotoURL = profileData.photoURL || null;
       }
       
-      if (/[^\x20-\x7E]/.test(finalDisplayName) || filter.isProfane(finalDisplayName) || (finalBio && filter.isProfane(finalBio))) {
+      if (/[\x00-\x1F\x7F-\x9F\u200B-\u200D\uFEFF]/.test(finalDisplayName) || filter.isProfane(finalDisplayName) || (finalBio && filter.isProfane(finalBio))) {
          return res.status(400).json({ error: "Profile details blocked by local policy filters." });
+      }
+
+      const titleCheck = await validateNameAndBioWithGemini(finalDisplayName, finalBio);
+      if (titleCheck.blocked) {
+         return res.status(400).json({ error: titleCheck.reason || "Profile details blocked by campaign policy filters." });
       }
 
       const campaignDocRef = db.doc(`campaigns/${campaignId}`);
@@ -806,13 +905,18 @@ async function startServer() {
         return res.status(400).json({ error: "Photo URL cannot exceed 1000 characters." });
       }
 
-      // Check invisible chars/unicode lookalikes (simple ASCII check as basic guard)
-      if (/[^\x20-\x7E]/.test(trimmedName)) {
-         return res.status(400).json({ error: "Profile name contains unsupported/invisible characters." });
+      // Check invisible chars/unicode lookalikes
+      if (/[\x00-\x1F\x7F-\x9F\u200B-\u200D\uFEFF]/.test(trimmedName)) {
+         return res.status(400).json({ error: "Profile name contains unsupported or invisible characters." });
       }
 
       if (filter.isProfane(trimmedName) || (bio && filter.isProfane(bio))) {
          return res.status(400).json({ error: "Content blocked by profanity filter." });
+      }
+
+      const titleCheck = await validateNameAndBioWithGemini(trimmedName, bio);
+      if (titleCheck.blocked) {
+         return res.status(400).json({ error: titleCheck.reason || "Profile details blocked by policy filters." });
       }
 
       const db = getFirestore();
@@ -836,15 +940,6 @@ async function startServer() {
         displayNameLower: lowerName,
         photoURL: photoURL?.trim() || null
       }, { merge: true });
-
-      const candidateDocs = await db.collectionGroup("candidates").where("userId", "==", userId).get();
-      candidateDocs.forEach(docSnap => {
-        batch.update(docSnap.ref, {
-          displayName: trimmedName,
-          photoURL: photoURL?.trim() || null,
-          bio: bio?.trim() || ""
-        });
-      });
 
       await batch.commit();
 
