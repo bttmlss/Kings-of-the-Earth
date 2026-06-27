@@ -19,7 +19,6 @@ import LeaderboardScreen from "./components/LeaderboardScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import HomeFeed from "./components/HomeFeed";
 import { NotificationsScreen } from "./components/NotificationsScreen";
-import Logo from "./components/Logo";
 import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PullToRefresh from "./components/PullToRefresh";
@@ -390,7 +389,7 @@ export default function App() {
             }}
             className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[10px] sm:text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
           >
-            <Logo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
             <span className="hidden sm:inline">Start Campaign</span>
             <span className="sm:hidden">Start</span>
           </button>
@@ -787,7 +786,7 @@ export default function App() {
                 : theme === "dark" ? "text-slate-400 hover:text-slate-200" : "text-slate-400 hover:text-slate-600"
             }`}
           >
-            <Logo className={`w-5 h-5 ${currentTab === "campaign" ? "fill-amber-500/20" : ""}`} />
+            <Crown className={`w-5 h-5 ${currentTab === "campaign" ? "text-amber-500" : ""}`} />
             <span className="text-[10px] uppercase tracking-wider font-extrabold leading-none">Browse</span>
           </button>
 
