@@ -482,7 +482,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
     <div 
       ref={containerRef}
       id="profile-screen-container"
-      className="fixed inset-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[100dvh] overflow-y-scroll snap-y snap-mandatory no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
+      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[calc(100dvh-73px-65px)] overflow-y-scroll snap-y snap-mandatory no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
@@ -511,8 +511,9 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
       )}
 
       {/* SECTION 1: HEADER & STATS */}
-      <section id="section-0" className="w-full h-[100dvh] snap-start flex flex-col justify-start px-4 shrink-0 pt-[72px] sm:pt-[80px] pb-0 overflow-hidden">
-        <div className="w-full max-w-5xl mx-auto flex flex-col justify-start gap-4 pb-4 pt-4 relative">
+      <section id="section-0" className="w-full h-full snap-start flex flex-col justify-between px-4 shrink-0 pt-4 pb-2 overflow-hidden">
+        <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-between relative h-full">
+          <div className="w-full flex flex-col justify-start gap-3 sm:gap-4">
           
       {/* Profile summary block wrapped for tight spacing */}
       <div className={`flex flex-col gap-1 items-center w-full ${!isOwnProfile && onBack ? "pt-16 sm:pt-12" : ""}`}>
@@ -995,16 +996,51 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
         </div>
       )}
       
+          </div>
+
+          {/* Smooth scroll down arrow indicator */}
+          {(!isOwnProfile && isProfilePrivate) ? null : (
+            <div className="flex justify-center pt-2 pb-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('section-1');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="flex flex-col items-center gap-1 group text-slate-400 hover:text-amber-500 transition-colors duration-200 cursor-pointer"
+              >
+                <span className="text-[8px] font-mono font-bold tracking-[0.2em] uppercase opacity-75 group-hover:opacity-100">
+                  System Analytics
+                </span>
+                <ChevronDown className="w-4 h-4 animate-bounce text-amber-500/80 group-hover:text-amber-500" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
-
-
 
       {(!isOwnProfile && isProfilePrivate) ? null : (
         <>
         {/* SECTION 2: THE VOTING INDEX */}
-        <section id="section-1" className="w-full h-[100dvh] snap-start flex flex-col justify-start px-4 shrink-0 pt-0 pb-[88px] sm:pb-[96px] overflow-hidden">
-           <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-6 pb-8 h-full">
+        <section id="section-1" className="w-full h-full snap-start flex flex-col justify-start px-4 shrink-0 pt-4 pb-4 overflow-hidden">
+           <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-4 pb-4 h-full relative">
+             
+             {/* Smooth scroll up arrow indicator */}
+             <div className="flex justify-center pt-2 pb-4">
+               <button
+                 type="button"
+                 onClick={() => {
+                   const el = document.getElementById('section-0');
+                   el?.scrollIntoView({ behavior: 'smooth' });
+                 }}
+                 className="flex flex-col items-center gap-1 group text-slate-400 hover:text-amber-500 transition-colors duration-200 cursor-pointer"
+               >
+                 <ChevronUp className="w-4 h-4 animate-bounce text-amber-500/80 group-hover:text-amber-500" />
+                 <span className="text-[8px] font-mono font-bold tracking-[0.2em] uppercase opacity-75 group-hover:opacity-100">
+                   Return to Profile
+                 </span>
+               </button>
+             </div>
 
             {/* User Statistics 4-Quadrant High-Fidelity Spreadsheet Dashboard */}
             <div className="space-y-4">
