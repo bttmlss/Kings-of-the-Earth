@@ -2,8 +2,7 @@ import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, increment } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Candidate } from "../types";
-import { Trophy, Search, ArrowUp, ArrowDown, Minus, RefreshCw, PlaneTakeoff, Info, UserCircle, X } from "lucide-react";
-import Logo from "./Logo";
+import { Trophy, Crown, Search, ArrowUp, ArrowDown, Minus, RefreshCw, PlaneTakeoff, Info, UserCircle, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface LeaderboardScreenProps {
@@ -784,7 +783,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
                   <div>
                     <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">CROWNS</p>
                     <p className="text-sm font-extrabold text-amber-500 mt-1 flex items-center justify-center gap-0.5 select-all">
-                      <Logo className="w-3 h-3 fill-amber-500/25 shrink-0" />
+                      <Crown className="w-3 h-3 fill-amber-500/25 shrink-0" />
                       {selectedPlayer.crownsHeld}
                     </p>
                   </div>

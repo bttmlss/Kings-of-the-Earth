@@ -36,7 +36,6 @@ export interface Candidate {
   prefix?: string;
   campaignTitle?: string;
   bannerURL?: string;
-  isKing?: boolean;
 }
 
 export interface VoteLog {

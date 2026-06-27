@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Trophy, ArrowUp, ArrowDown, Activity, Loader2 } from "lucide-react";
+import { Trophy, Crown, ArrowUp, ArrowDown, Activity, Loader2 } from "lucide-react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 
