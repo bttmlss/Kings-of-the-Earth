@@ -106,7 +106,12 @@ export default function CandidateCampaignScreen({
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = originalOverflow;
+      const overlays = document.querySelectorAll('#profile-screen-container, #campaign-detail-container, #candidate-campaign-container');
+      if (overlays.length <= 1) {
+        document.body.style.overflow = "auto";
+      } else {
+        document.body.style.overflow = originalOverflow;
+      }
     };
   }, []);
 
@@ -275,7 +280,7 @@ export default function CandidateCampaignScreen({
     <div 
       ref={containerRef}
       id="candidate-campaign-container"
-      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-[35] bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
+      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-[35] bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[calc(100dvh-73px-65px)] overflow-y-scroll snap-y snap-mandatory no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
@@ -405,150 +410,157 @@ export default function CandidateCampaignScreen({
       ) : (
         <>
           {/* SECTION 1: CANDIDATE INFO HERO */}
-          <section id="section-0" className="w-full flex flex-col justify-center py-4 px-4 relative">
-            <div className="w-full max-w-3xl mx-auto flex flex-col gap-4 justify-center items-center">
-              
-              {/* Elegant Navigation Bar */}
-              <div className="w-full flex items-center justify-start py-1 shrink-0">
-                <button
-                  onClick={onBack}
-                  className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to domain info</span>
-                </button>
-              </div>
-              
-              <div className="w-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 flex flex-col relative overflow-hidden shadow-md">
-                {/* Elegant Banner Area */}
-                <div className="w-full h-28 sm:h-40 relative bg-slate-200 dark:bg-slate-950 overflow-hidden shrink-0 border-b border-slate-200 dark:border-slate-800/80">
-                  {localBannerURL ? (
-                    <img src={localBannerURL || undefined} alt="Campaign banner" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-r from-amber-500/10 via-slate-500/5 to-slate-800/20" />
-                  )}
-                  
-                  {/* Action buttons in top-right of the banner/title box */}
-                  <div className="absolute top-3 right-4 z-20 flex gap-2">
-                    {userId === candidate.userId && (
-                      <button
-                        id="edit-campaign-button"
-                        onClick={() => {
-                          if (isGuest) {
-                            setError("Guests cannot edit campaigns. Please log in.");
-                            return;
-                          }
-                          setEditTitle(localCampaignTitle);
-                          setEditBannerURL(localBannerURL);
-                          setEditCoverBio(candidate.bio || "");
-                          setEditError(null);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-amber-400 dark:text-amber-400 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
-                        title="Edit Cover"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit Cover</span>
-                      </button>
-                    )}
-                  </div>
+          <section id="section-0" className="w-full h-full snap-start flex flex-col justify-between px-4 shrink-0 pt-4 pb-2 overflow-hidden">
+            <div className="w-full max-w-3xl mx-auto flex-1 flex flex-col justify-between relative h-full">
+              <div className="w-full flex flex-col justify-start gap-4 items-center">
+                
+                {/* Elegant Navigation Bar */}
+                <div className="w-full flex items-center justify-start py-1 shrink-0">
+                  <button
+                    onClick={onBack}
+                    className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back to domain info</span>
+                  </button>
                 </div>
-
-                {/* Campaign info details */}
-                <div className="p-5 sm:p-6 pb-12 sm:pb-6 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 relative">
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-                  
-                  <div className="flex flex-col sm:flex-row items-center gap-4 z-10 relative -mt-12 sm:-mt-16">
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-900 shadow-md shrink-0 bg-slate-250 dark:bg-slate-800 flex items-center justify-center relative bg-white dark:bg-slate-900">
-                      {candidate.photoURL ? (
-                        <img src={candidate.photoURL || undefined} alt={candidate.displayName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-3xl">👑</span>
+                
+                <div className="w-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 flex flex-col relative overflow-hidden shadow-md">
+                  {/* Elegant Banner Area */}
+                  <div className="w-full h-28 sm:h-40 relative bg-slate-200 dark:bg-slate-950 overflow-hidden shrink-0 border-b border-slate-200 dark:border-slate-800/80">
+                    {localBannerURL ? (
+                      <img src={localBannerURL || undefined} alt="Campaign banner" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-r from-amber-500/10 via-slate-500/5 to-slate-800/20" />
+                    )}
+                    
+                    {/* Action buttons in top-right of the banner/title box */}
+                    <div className="absolute top-3 right-4 z-20 flex gap-2">
+                      {userId === candidate.userId && (
+                        <button
+                          id="edit-campaign-button"
+                          onClick={() => {
+                            if (isGuest) {
+                              setError("Guests cannot edit campaigns. Please log in.");
+                              return;
+                            }
+                            setEditTitle(localCampaignTitle);
+                            setEditBannerURL(localBannerURL);
+                            setEditCoverBio(candidate.bio || "");
+                            setEditError(null);
+                            setIsEditModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-amber-400 dark:text-amber-400 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
+                          title="Edit Cover"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Cover</span>
+                        </button>
                       )}
                     </div>
-                    <div className="text-center sm:text-left space-y-1 pt-2 sm:pt-4">
-                      <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
-                        {campaign.domainTitle}
+                  </div>
+
+                  {/* Campaign info details */}
+                  <div className="p-5 sm:p-6 pb-12 sm:pb-6 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 relative">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                    
+                    <div className="flex flex-col sm:flex-row items-center gap-4 z-10 relative -mt-12 sm:-mt-16">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-900 shadow-md shrink-0 bg-slate-250 dark:bg-slate-800 flex items-center justify-center relative bg-white dark:bg-slate-900">
+                        {candidate.photoURL ? (
+                          <img src={candidate.photoURL || undefined} alt={candidate.displayName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-3xl">👑</span>
+                        )}
                       </div>
-                      <hr className="border-slate-250 dark:border-slate-800 my-1.5 w-full max-w-xs mx-auto sm:mx-0" />
-                      <h1 className="text-xl sm:text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight uppercase">
-                        {localCampaignTitle}
-                      </h1>
-                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md">
-                        {candidate.bio || "A visionary claimant seeking the crown."}
-                      </p>
-                      <div className="flex items-center justify-center sm:justify-start gap-3 mt-1.5">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                          <Users className="w-3.5 h-3.5 text-amber-500" />
-                          {candidate.voteCount} Votes
+                      <div className="text-center sm:text-left space-y-1 pt-2 sm:pt-4">
+                        <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                          {campaign.domainTitle}
+                        </div>
+                        <hr className="border-slate-250 dark:border-slate-800 my-1.5 w-full max-w-xs mx-auto sm:mx-0" />
+                        <h1 className="text-xl sm:text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight uppercase">
+                          {localCampaignTitle}
+                        </h1>
+                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md">
+                          {candidate.bio || "A visionary claimant seeking the crown."}
+                        </p>
+                        <div className="flex items-center justify-center sm:justify-start gap-3 mt-1.5">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                            <Users className="w-3.5 h-3.5 text-amber-500" />
+                            {candidate.voteCount} Votes
+                          </div>
                         </div>
                       </div>
                     </div>
+                    
+                    <div className="shrink-0 z-10 relative pt-2 sm:pt-4">
+                      {userId !== candidate.userId && (
+                        <button
+                          onClick={handleJoin}
+                          disabled={hasJoined}
+                          className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            hasJoined 
+                               ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
+                               : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 cursor-pointer active:scale-95"
+                          }`}
+                        >
+                          {hasJoined ? (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Requested
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="w-3.5 h-3.5" />
+                              Join Campaign
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  
-                  <div className="shrink-0 z-10 relative pt-2 sm:pt-4">
-                    {userId !== candidate.userId && (
-                      <button
-                        onClick={handleJoin}
-                        disabled={hasJoined}
-                        className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
-                          hasJoined 
-                             ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
-                             : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 cursor-pointer active:scale-95"
-                        }`}
-                      >
-                        {hasJoined ? (
-                          <>
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Requested
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="w-3.5 h-3.5" />
-                            Join Campaign
-                          </>
-                        )}
-                      </button>
-                    )}
+
+                  {/* View Details button positioned at the bottom right corner of the outer campaign cover box */}
+                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20">
+                    <button
+                      onClick={() => setShowDetailsPage(true)}
+                      className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-slate-200 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
+                      title="View Details"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                      <span>View Details</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* View Details button positioned at the bottom right corner of the outer campaign cover box */}
-                <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20">
-                  <button
-                    onClick={() => setShowDetailsPage(true)}
-                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-slate-200 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
-                    title="View Details"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
-                    <span>View Details</span>
-                  </button>
-                </div>
               </div>
 
               {/* Prompt to scroll to Court Builder */}
-              <button
-                onClick={() => scrollToSection(1)}
-                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors animate-bounce font-mono text-[9px] uppercase tracking-widest cursor-pointer mt-1"
-              >
-                <span>View Court Builder</span>
-                <ChevronDown className="w-4 h-4 text-amber-500 animate-pulse" />
-              </button>
+              <div className="flex justify-center pt-2 pb-2 shrink-0">
+                <button
+                  onClick={() => scrollToSection(1)}
+                  className="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-500 transition-colors duration-200 font-mono text-[9px] uppercase tracking-widest cursor-pointer mt-1"
+                >
+                  <span>View Court Builder</span>
+                  <ChevronDown className="w-4 h-4 text-amber-500 animate-pulse" />
+                </button>
+              </div>
             </div>
           </section>
 
           {/* SECTION 2: COURT BUILDER */}
-          <section id="section-1" className="w-full flex flex-col justify-start px-4 pt-12 pb-4">
-            <div className="w-full max-w-4xl mx-auto flex flex-col justify-start relative">
+          <section id="section-1" className="w-full h-full snap-start flex flex-col justify-start px-4 shrink-0 pt-4 pb-4 overflow-hidden">
+            <div className="w-full max-w-4xl mx-auto flex flex-col justify-start gap-4 pb-4 h-full relative">
               
               {/* Floating Arrow to scroll back up to Candidate Hero */}
-              <button
-                onClick={() => scrollToSection(0)}
-                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors animate-bounce font-mono text-[9px] uppercase tracking-widest cursor-pointer mb-2 shrink-0"
-              >
-                <ChevronUp className="w-4 h-4 text-amber-500 animate-pulse" />
-                <span>Back to Campaign Info</span>
-              </button>
+              <div className="flex justify-center pt-2 pb-2 shrink-0">
+                <button
+                  onClick={() => scrollToSection(0)}
+                  className="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-500 transition-colors duration-200 font-mono text-[9px] uppercase tracking-widest cursor-pointer"
+                >
+                  <ChevronUp className="w-4 h-4 text-amber-500 animate-pulse" />
+                  <span>Back to Campaign Info</span>
+                </button>
+              </div>
 
               {/* Static Outer Box containing Interactive Court Builder */}
               <div className="w-full flex-1 flex flex-col bg-white dark:bg-[#090b11] border border-slate-200 dark:border-slate-800/80 rounded-3xl shadow-sm overflow-hidden min-h-0">

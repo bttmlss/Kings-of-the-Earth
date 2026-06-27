@@ -15,7 +15,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon } from "lucide-react";
+import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
@@ -27,20 +27,15 @@ import CandidateCampaignScreen from "./CandidateCampaignScreen";
 
 function RandomCampaignSlider({ candidates, setSelectedCandidate }: { candidates: any[], setSelectedCandidate: (c: any) => void }) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
   useEffect(() => {
-    if (candidates.length <= 1) return;
+    if (candidates.length <= 1 || !isAutoPlaying) return;
     const interval = setInterval(() => {
-      setCurrentIndex(prev => {
-        let nextIndex;
-        do {
-          nextIndex = Math.floor(Math.random() * candidates.length);
-        } while (nextIndex === prev);
-        return nextIndex;
-      });
-    }, 4000);
+      setCurrentIndex(prev => (prev + 1) % candidates.length);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [candidates.length]);
+  }, [candidates.length, isAutoPlaying]);
 
   if (candidates.length === 0) {
     return (
@@ -52,40 +47,76 @@ function RandomCampaignSlider({ candidates, setSelectedCandidate }: { candidates
 
   const c = candidates[currentIndex];
 
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsAutoPlaying(false);
+    setCurrentIndex(prev => (prev - 1 + candidates.length) % candidates.length);
+  };
+
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsAutoPlaying(false);
+    setCurrentIndex(prev => (prev + 1) % candidates.length);
+  };
+
   return (
-    <div className="relative w-full h-[90px] overflow-hidden rounded-xl">
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={c.id || c.userId || currentIndex}
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: -100, opacity: 0 }}
-          transition={{ duration: 0.4, ease: "easeInOut" }}
-          className="absolute inset-0 w-full h-full"
+    <div className="relative w-full h-[90px] flex items-center select-none">
+      {/* Navigation Left Arrow */}
+      {candidates.length > 1 && (
+        <button
+          type="button"
+          onClick={handlePrev}
+          className="absolute left-0 z-20 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-all shadow-sm cursor-pointer"
         >
-          <div
-            onClick={() => setSelectedCandidate(c)}
-            className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl hover:border-amber-500/50 transition-all text-left space-y-2 group cursor-pointer flex flex-col justify-center shadow-sm"
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      {/* Navigation Right Arrow */}
+      {candidates.length > 1 && (
+        <button
+          type="button"
+          onClick={handleNext}
+          className="absolute right-0 z-20 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-amber-500 transition-all shadow-sm cursor-pointer"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      <div className="w-full h-full px-8">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={c.id || c.userId || currentIndex}
+            initial={{ x: 30, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -30, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="w-full h-full"
           >
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                 <Crown className="w-3.5 h-3.5" /> CAMPAIGN
-              </span>
-              <span className="text-[10px] text-slate-600 dark:text-slate-300 font-mono font-bold bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                {c.voteCount} VOTES
-              </span>
+            <div
+              onClick={() => setSelectedCandidate(c)}
+              className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3.5 rounded-xl hover:border-amber-500/50 transition-all text-left space-y-1.5 group cursor-pointer flex flex-col justify-center shadow-xs"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                   <Crown className="w-3.5 h-3.5 text-amber-500" /> FEATURED CAMPAIGN
+                </span>
+                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono font-bold bg-slate-100/80 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  {c.voteCount} VOTES
+                </span>
+              </div>
+              <div>
+                <h4 className="font-display font-black text-xs sm:text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-amber-500 transition-colors uppercase leading-tight">
+                  {c.campaignTitle || `${c.displayName}'s Campaign`}
+                </h4>
+                <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate uppercase mt-0.5 font-bold tracking-wider">
+                  {c.isKing ? "CURRENT LEADER" : `CANDIDATE • ${c.displayName}`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className="font-display font-bold text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-amber-500 transition-colors uppercase">
-                {c.campaignTitle || `${c.displayName}'s Campaign`}
-              </h4>
-              <p className="text-[10px] text-slate-400 truncate uppercase mt-0.5 font-medium tracking-wider">
-                {c.isKing ? "CURRENT LEADER" : `CANDIDATE • ${c.displayName}`}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -267,7 +298,12 @@ export default function CampaignDetail({
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = originalOverflow;
+      const overlays = document.querySelectorAll('#profile-screen-container, #campaign-detail-container, #candidate-campaign-container');
+      if (overlays.length <= 1) {
+        document.body.style.overflow = "auto";
+      } else {
+        document.body.style.overflow = originalOverflow;
+      }
     };
   }, []);
 
@@ -602,11 +638,18 @@ export default function CampaignDetail({
     );
   }
 
+  const scrollToSection = (index: number) => {
+    const el = containerRef.current?.querySelector(`#section-${index}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <div 
       ref={containerRef}
       id="campaign-detail-container"
-      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full overflow-y-auto no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
+      className="fixed top-[73px] bottom-[65px] left-0 right-0 z-30 bg-[#fcfcfd] dark:bg-[#0b0f19] w-full h-[calc(100dvh-138px)] overflow-y-scroll snap-y snap-mandatory no-scrollbar font-sans selection:bg-amber-100 selection:text-amber-900"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
@@ -733,153 +776,166 @@ export default function CampaignDetail({
       )}
 
       {/* SECTION 1: HEADER & BALLOT */}
-      <section id="section-0" className="w-full flex flex-col pt-4 pb-4 shrink-0 px-4">
-        <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-4">
-          {/* Elegant Navigation Bar */}
-          <div className="flex items-center justify-between py-1 shrink-0">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to domains</span>
-            </button>
-          </div>
-
-          {error && (
-            <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 border border-rose-300 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2 shrink-0">
-              <AlertCircle className="w-4.5 h-4.5 text-rose-600 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {/* Hero Header Section */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="relative bg-slate-50 dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden shrink-0 min-h-[160px] flex flex-col justify-center"
-          >
-            <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="absolute top-4 right-4 z-20 flex items-center">
-              {userJoined ? (
-                <button
-                   onClick={() => {
-                     if (isGuest) {
-                       setError("Guests cannot quit campaigns.");
-                       return;
-                     }
-                     setShowQuitPrompt(true)
-                   }}
-                   disabled={isLeaving}
-                   className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-xl text-[10px] font-mono tracking-wider font-extrabold border transition-all cursor-pointer shadow-xs bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:bg-rose-500/10 text-slate-500 hover:text-[#e11d48] min-w-[80px]"
-                >
-                  <LogOut className="w-3.5 h-3.5 shrink-0" />
-                  <span>{isLeaving ? "LVR..." : "QUIT"}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    if (isGuest) {
-                      setError("Guests cannot join campaigns. Please register an account.");
-                      return;
-                    }
-                    setShowOptInPrompt(true)
-                  }}
-                  disabled={isJoining}
-                  className="flex items-center justify-center gap-1.5 h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white font-mono font-extrabold text-[10px] tracking-wider rounded-xl transition-all cursor-pointer shadow-xs min-w-[80px]"
-                >
-                  <Plus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-                  <span>{isJoining ? "OPT..." : "OPT IN"}</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative z-10">
-              <div className="space-y-1.5 text-left pr-20 md:pr-24">
-                <h1 className="font-display font-bold text-2xl md:text-3xl text-slate-900 dark:text-white tracking-tight uppercase max-w-xl break-words">
-                  {cleanedDetailTitle}
-                </h1>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-wider">
-                  {campaign.domainType || "KINGDOM"} • <strong className="text-slate-700 dark:text-slate-200">{candidates.length}</strong> {candidates.length === 1 ? "contender" : "contenders"}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Campaigns Box */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs relative overflow-hidden shrink-0 flex flex-col gap-4"
-          >
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-amber-500/20" />
-            
-            <div className="flex items-center justify-between">
-              <h3 className="font-display font-black text-slate-950 dark:text-slate-200 text-xs tracking-widest uppercase flex items-center gap-2">
-                <Crown className="w-4 h-4 text-amber-500" />
-                Campaigns
-              </h3>
+      <section id="section-0" className="w-full h-full snap-start flex flex-col justify-between px-4 shrink-0 pt-4 pb-2 overflow-hidden">
+        <div className="w-full max-w-3xl mx-auto flex-1 flex flex-col justify-between relative h-full">
+          <div className="flex flex-col gap-3.5 w-full">
+            {/* Elegant Navigation Bar */}
+            <div className="flex items-center justify-between py-1 shrink-0">
               <button
-                type="button"
-                onClick={() => setShowAllCampaignsPage(true)}
-                className="text-[10px] text-amber-600 dark:text-amber-500 font-extrabold hover:underline uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                onClick={onBack}
+                className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
               >
-                See All →
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to domains</span>
               </button>
             </div>
 
-            {/* Quick list of featured campaigns (except current one) */}
-            {(() => {
-              if (candidates.length === 0) {
+            {error && (
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-rose-300 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2 shrink-0">
+                <AlertCircle className="w-4.5 h-4.5 text-rose-600 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            {/* Hero Header Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="relative bg-slate-50 dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden shrink-0 min-h-[110px] flex flex-col justify-center"
+            >
+              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="absolute top-4 right-4 z-20 flex items-center">
+                {userJoined ? (
+                  <button
+                     onClick={() => {
+                       if (isGuest) {
+                         setError("Guests cannot quit campaigns.");
+                         return;
+                       }
+                       setShowQuitPrompt(true)
+                     }}
+                     disabled={isLeaving}
+                     className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-xl text-[10px] font-mono tracking-wider font-extrabold border transition-all cursor-pointer shadow-xs bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:bg-rose-500/10 text-slate-500 hover:text-[#e11d48] min-w-[80px]"
+                  >
+                    <LogOut className="w-3.5 h-3.5 shrink-0" />
+                    <span>{isLeaving ? "LVR..." : "QUIT"}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (isGuest) {
+                        setError("Guests cannot join campaigns. Please register an account.");
+                        return;
+                      }
+                      setShowOptInPrompt(true)
+                    }}
+                    disabled={isJoining}
+                    className="flex items-center justify-center gap-1.5 h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white font-mono font-extrabold text-[10px] tracking-wider rounded-xl transition-all cursor-pointer shadow-xs min-w-[80px]"
+                  >
+                    <Plus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                    <span>{isJoining ? "OPT..." : "OPT IN"}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative z-10">
+                <div className="space-y-1 text-left pr-20 md:pr-24">
+                  <h1 className="font-display font-bold text-xl md:text-2xl text-slate-900 dark:text-white tracking-tight uppercase max-w-xl break-words">
+                    {cleanedDetailTitle}
+                  </h1>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-wider">
+                    {campaign.domainType || "KINGDOM"} • <strong className="text-slate-700 dark:text-slate-200">{candidates.length}</strong> {candidates.length === 1 ? "contender" : "contenders"}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Campaigns Box */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 shadow-sm relative overflow-hidden shrink-0 flex flex-col gap-5"
+            >
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-amber-500/20" />
+              
+              <div className="flex items-center justify-between">
+                <h3 className="font-display font-black text-slate-950 dark:text-slate-200 text-xs tracking-widest uppercase flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-amber-500" />
+                  Campaigns
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAllCampaignsPage(true)}
+                  className="text-[10px] text-amber-600 dark:text-amber-500 font-extrabold hover:underline uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                >
+                  See All →
+                </button>
+              </div>
+
+              {/* Quick list of featured campaigns (except current one) */}
+              {(() => {
+                if (candidates.length === 0) {
+                  return (
+                    <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
+                      [ No other active campaigns available ]
+                    </div>
+                  );
+                }
                 return (
-                  <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
-                    [ No other active campaigns available ]
-                  </div>
+                  <RandomCampaignSlider
+                    candidates={candidates}
+                    setSelectedCandidate={setSelectedCandidate}
+                  />
                 );
-              }
-              return (
-                <RandomCampaignSlider
-                  candidates={candidates}
-                  setSelectedCandidate={setSelectedCandidate}
-                />
-              );
-            })()}
-          </motion.div>
+              })()}
+            </motion.div>
+          </div>
+
+          {/* Prompt to scroll to Domain Leaderboard */}
+          <div className="flex justify-center pt-2 pb-2 shrink-0">
+            <button
+              onClick={() => scrollToSection(1)}
+              className="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-500 transition-colors duration-200 font-mono text-[9px] uppercase tracking-widest cursor-pointer mt-1"
+            >
+              <span>View Leaderboard</span>
+              <ChevronDown className="w-4 h-4 text-amber-500 animate-pulse" />
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* SECTION 2: DOMAIN PANELS (Leaderboard & Court) */}
-      <section id="section-1" className="w-full px-4 pt-12 pb-4 shrink-0 flex flex-col">
-        <div className="w-full max-w-3xl mx-auto flex flex-col">
-          {/* TABS SELECTION BAR */}
-          <div className="flex border-b border-slate-200 dark:border-slate-800/80 mb-6 font-mono text-xs font-black uppercase tracking-widest gap-2 shrink-0">
+      {/* SECTION 2: DOMAIN PANELS (Leaderboard) */}
+      <section id="section-1" className="w-full h-full snap-start flex flex-col justify-between px-4 shrink-0 pt-4 pb-4 overflow-hidden">
+        <div className="w-full max-w-3xl mx-auto flex flex-col justify-start gap-4 pb-4 h-full relative">
+          
+          {/* Smooth scroll up arrow indicator */}
+          <div className="flex justify-center pt-2 pb-4">
             <button
-              id="tab-leaderboard"
-              onClick={() => setActiveTab("leaderboard")}
-              className={`px-4 py-2.5 border-b-2 -mb-[2px] transition-all duration-150 cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "leaderboard"
-                  ? "border-amber-500 text-amber-500 font-extrabold"
-                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              }`}
+              type="button"
+              onClick={() => scrollToSection(0)}
+              className="flex flex-col items-center gap-1 group text-slate-400 hover:text-amber-500 transition-colors duration-200 cursor-pointer"
             >
-              <Trophy className="w-4 h-4" />
-              <span>Domain Leaderboard</span>
+              <ChevronUp className="w-4 h-4 animate-bounce text-amber-500/80 group-hover:text-amber-500" />
+              <span className="text-[8px] font-mono font-bold tracking-[0.2em] uppercase opacity-75 group-hover:opacity-100">
+                Return to Campaign Info
+              </span>
             </button>
           </div>
 
-      <div className="flex-1 min-h-0 relative rounded-[20px] shadow-sm flex flex-col pb-4">
-        <AnimatePresence mode="wait">
-          {activeTab === "leaderboard" && (
-            <motion.div
-              key="leaderboard"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.18 }}
-              className="w-full h-full flex flex-col"
-            >
+          {/* Leaderboard content inside scrollable wrapper */}
+          <div className="flex-1 overflow-y-auto pr-1 pb-6 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent flex flex-col min-h-0">
+            <AnimatePresence mode="wait">
+              {activeTab === "leaderboard" && (
+                <motion.div
+                  key="leaderboard"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.18 }}
+                  className="w-full h-full flex flex-col"
+                >
               {/* Competitors List Header */}
               <div className="flex items-center justify-between mb-4 shrink-0">
                 <h2 className="font-display font-medium text-lg text-slate-800 dark:text-slate-205 flex items-center gap-2">

@@ -3,11 +3,16 @@ import { useEffect } from 'react';
 export function useGlobalInvertedScroll() {
   useEffect(() => {
     const isSnapContainer = (el: HTMLElement): boolean => {
-      if (el.id === 'profile-screen-container') return true;
+      if (el.id === 'profile-screen-container' || el.id === 'candidate-campaign-container' || el.id === 'campaign-detail-container') return true;
       const style = window.getComputedStyle(el);
       const scrollSnapType = style.scrollSnapType || (style as any).webkitScrollSnapType || '';
       if (scrollSnapType && scrollSnapType !== 'none') return true;
-      if (el.className && typeof el.className === 'string' && (el.className.includes('snap-') || el.className.includes('scroll-snap'))) return true;
+      if (el.className && typeof el.className === 'string') {
+        const classes = el.className.split(/\s+/);
+        if (classes.some(c => c === 'snap-y' || c === 'snap-x' || c === 'snap-both' || c === 'snap-mandatory' || c === 'snap-proximity')) {
+          return true;
+        }
+      }
       return false;
     };
 
@@ -52,7 +57,7 @@ export function useGlobalInvertedScroll() {
       if (!currentScrollParent) return;
       
       // Decelerate with a smooth friction coefficient
-      velocity *= 0.92;
+      velocity *= 0.88;
       
       if (Math.abs(velocity) < 0.1) {
         velocity = 0;
@@ -71,7 +76,7 @@ export function useGlobalInvertedScroll() {
       
       animationFrameId = requestAnimationFrame(smoothScrollLoop);
     };
-
+ 
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
@@ -92,12 +97,12 @@ export function useGlobalInvertedScroll() {
           currentScrollParent = scrollParent;
           velocity = 0;
         }
-
+ 
         // Accumulate velocity with a responsive factor
-        velocity += e.deltaY * 0.35;
+        velocity += e.deltaY * 0.18;
         
         // Bound max velocity to keep it predictable
-        const maxVel = 45;
+        const maxVel = 25;
         if (velocity > maxVel) velocity = maxVel;
         if (velocity < -maxVel) velocity = -maxVel;
 

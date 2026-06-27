@@ -390,7 +390,12 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = originalOverflow;
+      const overlays = document.querySelectorAll('#profile-screen-container, #campaign-detail-container, #candidate-campaign-container');
+      if (overlays.length <= 1) {
+        document.body.style.overflow = "auto";
+      } else {
+        document.body.style.overflow = originalOverflow;
+      }
     };
   }, []);
 
@@ -631,8 +636,11 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
 
       {/* Active Campaigns - Grid Layout */}
       {(!isOwnProfile && isProfilePrivate) ? null : (() => {
-        const activeCampaignList = (isOwnProfile && !isGuest && recentCampaigns.length > 0)
-          ? recentCampaigns
+        const joinedRecentCampaigns = recentCampaigns.filter(rc =>
+          contestedCampaigns.some(s => s.campaignId === rc.id)
+        );
+        const activeCampaignList = (isOwnProfile && !isGuest && joinedRecentCampaigns.length > 0)
+          ? joinedRecentCampaigns
           : contestedCampaigns.map(s => campaigns.find(c => c.id === s.campaignId)).filter(Boolean) as Campaign[];
 
         return (
@@ -1283,8 +1291,11 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
 
             <div className="flex-1 overflow-y-auto pr-1 pb-6 space-y-6 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent">
               {(() => {
-                const activeCampaignList = (isOwnProfile && !isGuest && recentCampaigns.length > 0)
-                  ? recentCampaigns
+                const joinedRecentCampaigns = recentCampaigns.filter(rc =>
+                  contestedCampaigns.some(s => s.campaignId === rc.id)
+                );
+                const activeCampaignList = (isOwnProfile && !isGuest && joinedRecentCampaigns.length > 0)
+                  ? joinedRecentCampaigns
                   : contestedCampaigns.map(s => campaigns.find(c => c.id === s.campaignId)).filter(Boolean) as Campaign[];
 
                 const catalogCategories = [

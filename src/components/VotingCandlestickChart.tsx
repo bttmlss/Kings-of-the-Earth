@@ -17,12 +17,12 @@ export default function VotingCandlestickChart({ candles }: VotingCandlestickCha
 
   // Initialize viewWindow to show latest 90 candles or all if less
   useEffect(() => {
-    if (!viewWindow && candles.length > 0) {
+    if (!viewWindow && candles && candles.length > 0) {
       setViewWindow({
         start: Math.max(0, candles.length - 90),
         end: candles.length
       });
-    } else if (viewWindow && candles.length > viewWindow.end) {
+    } else if (viewWindow && candles && candles.length > viewWindow.end) {
       // If new candles are added, shift window right!
       const diff = candles.length - viewWindow.end;
       setViewWindow({
@@ -30,15 +30,7 @@ export default function VotingCandlestickChart({ candles }: VotingCandlestickCha
         end: candles.length
       });
     }
-  }, [candles.length]);
-
-  if (!candles || candles.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-slate-400 font-mono text-[9px] uppercase">
-        [ No metrics logged ]
-      </div>
-    );
-  }
+  }, [candles?.length]);
 
   // Active view window
   const startIdx = viewWindow ? Math.max(0, viewWindow.start) : 0;
@@ -206,6 +198,14 @@ export default function VotingCandlestickChart({ candles }: VotingCandlestickCha
         return () => node.removeEventListener('wheel', onWheel);
      }
   }, []);
+
+  if (!candles || candles.length === 0) {
+    return (
+      <div className="h-[300px] flex items-center justify-center text-slate-400 font-mono text-[9px] uppercase border border-slate-200/50 dark:border-slate-800/50 rounded-xl bg-slate-500/[0.02]">
+        [ No metrics logged ]
+      </div>
+    );
+  }
 
   const activePoint = hoveredIndex !== null && visibleCandles[hoveredIndex] ? visibleCandles[hoveredIndex] : null;
   const activeCo = hoveredIndex !== null && activePoint ? { x: getX(hoveredIndex), y: getY(activePoint.close) } : null;

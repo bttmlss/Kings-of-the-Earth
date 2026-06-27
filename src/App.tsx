@@ -257,6 +257,19 @@ export default function App() {
     }
   }, [campaigns, selectedCampaign]);
 
+  // Synchronize body overflow based on active full-screen views
+  useEffect(() => {
+    const hasOverlayActive = currentTab === "profile" || currentTab === "notifications" || !!selectedCampaign;
+    if (hasOverlayActive) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, [currentTab, selectedCampaign]);
+
 
   const isGuest = user?.uid?.startsWith("local_");
 
