@@ -5,7 +5,8 @@ import { updateProfile } from "firebase/auth";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Candidate } from "../types";
 import { motion, AnimatePresence } from "motion/react";
-import { ShieldCheck, UserCircle, Award, Landmark, Crown, RefreshCw, Layers, ShieldAlert, Sparkles, LogOut, CheckCircle, ChevronRight, ChevronDown, ChevronUp, Edit3, Lock, Camera, Check, TrendingUp, Activity, Globe, ArrowLeft, Image as ImageIcon, Bell } from "lucide-react";
+import { ShieldCheck, UserCircle, Award, Landmark, RefreshCw, Layers, ShieldAlert, Sparkles, LogOut, CheckCircle, ChevronRight, ChevronDown, ChevronUp, Edit3, Lock, Camera, Check, TrendingUp, Activity, Globe, ArrowLeft, Image as ImageIcon, Bell } from "lucide-react";
+import Logo from "./Logo";
 import { useVotingIndex } from "../hooks/useVotingIndex";
 import VotingIndexChart from "./VotingIndexChart";
 import LeaderboardScreen from "./LeaderboardScreen";
@@ -63,7 +64,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
   // Snapping / Scroll state
   const [activeSection, setActiveSection] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const handleScroll = () => {
     if (!containerRef.current) return;
@@ -1143,7 +1144,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
                   <div className="flex justify-between items-start">
                     <div className="space-y-0.5 min-w-0">
                       <span className="text-[7px] sm:text-[8px] font-black tracking-widest uppercase text-amber-500 flex items-center gap-0.5 sm:gap-1">
-                        <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500 fill-amber-500/10 animate-pulse" /> Q2: LEADERBOARDS
+                        <Logo className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500 fill-amber-500/10 animate-pulse" /> Q2: LEADERBOARDS
                       </span>
                       <h4 className="font-mono text-[9px] sm:text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase truncate">
                         Sovereign Power
@@ -1556,7 +1557,7 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
             <div className="flex items-center justify-between pb-3 border-b border-slate-900 mt-1 shrink-0">
               <div className="space-y-0.5">
                 <h3 className="font-display font-black text-white text-xs sm:text-sm tracking-widest uppercase flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-500 animate-pulse" />
+                  <Logo className="w-4 h-4 text-amber-500 animate-pulse" />
                   Sovereign Leaderboards
                 </h3>
                 <p className="text-[10px] text-slate-400 font-mono uppercase font-bold">Global rankings of domain claimants & powers held</p>

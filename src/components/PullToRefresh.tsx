@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { RefreshCw, Crown, Sparkles, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Sparkles, CheckCircle2 } from "lucide-react";
+import Logo from "./Logo";
 import { motion, AnimatePresence } from "motion/react";
 
 interface PullToRefreshProps {
@@ -187,7 +188,7 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
                 style={{ rotate: `${progress * 3.6}deg`, scale: Math.max(0.7, progress / 100) }}
                 className="relative z-10 w-10 h-10 flex items-center justify-center"
               >
-                <Crown className="w-5 h-5 text-amber-500/80" />
+                <Logo className="w-5 h-5 text-amber-500/80" />
               </motion.div>
             )}
           </div>

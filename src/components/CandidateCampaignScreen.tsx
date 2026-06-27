@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud } from "lucide-react";
+import { ArrowLeft, Users, UserPlus, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud } from "lucide-react";
 import { Campaign, Candidate } from "../types";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import { auth, db } from "../firebase";
