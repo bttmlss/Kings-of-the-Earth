@@ -3,7 +3,7 @@ import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle,
 import { Campaign, Candidate } from "../types";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import { auth, db } from "../firebase";
-import { collection, query, where, orderBy, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 import PostCard, { Post } from "./PostCard";
 
@@ -26,7 +26,9 @@ export default function CandidateCampaignScreen({
   userPhotoURL,
   userProfiles,
 }: CandidateCampaignScreenProps) {
-  const [hasJoined, setHasJoined] = useState(false);
+  const [hasJoined, setHasJoined] = useState(() => {
+    return localStorage.getItem(`join_req_${candidate.userId}_${userId}`) === "true";
+  });
   const [showJoinToast, setShowJoinToast] = useState(false);
   const [showDetailsPage, setShowDetailsPage] = useState(false);
 
@@ -191,17 +193,39 @@ export default function CandidateCampaignScreen({
     }
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (isGuest) {
       setError("Guests cannot join campaigns. Please register an account.");
       return;
     }
+    
     setHasJoined(true);
+    const key = `join_req_${candidate.userId}_${userId}`;
+    localStorage.setItem(key, "true");
+    
     setShowJoinToast(true);
     // Hide toast after 4 seconds
     setTimeout(() => {
       setShowJoinToast(false);
     }, 4000);
+
+    // Send a notification to the candidate
+    try {
+      const notifsRef = collection(db, "notifications");
+      await addDoc(notifsRef, {
+        userId: candidate.userId,
+        type: "follow",
+        title: "Court Join Request",
+        body: `${userName} has requested to join your court in ${campaign.domainTitle}.`,
+        read: false,
+        createdAt: serverTimestamp(),
+        sourceUserId: userId,
+        sourceUserName: userName,
+        sourceUserPhoto: userPhotoURL,
+      });
+    } catch (err) {
+      console.warn("Failed to send join notification:", err);
+    }
   };
 
   const handleSaveChanges = async (e: React.FormEvent) => {
