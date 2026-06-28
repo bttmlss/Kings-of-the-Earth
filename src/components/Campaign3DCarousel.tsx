@@ -1,203 +1,58 @@
 import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
-import { Crown, Sparkles, ChevronRight, User, RefreshCw, Zap, Award } from "lucide-react";
+import { Crown, ChevronRight, Vote } from "lucide-react";
 import { Candidate } from "../types";
-
-interface UserProfileSimple {
-  uid: string;
-  displayName: string;
-  photoURL: string | null;
-  bio?: string | null;
-  prestige: number;
-  domainCount: number;
-  keyId: string;
-}
 
 interface Campaign3DCarouselProps {
   candidates: Candidate[];
-  userProfiles: any[];
-  onViewProfile: (user: { uid: string; displayName: string; photoURL: string | null }) => void;
+  userProfiles?: any[];
+  onViewProfile?: (user: { uid: string; displayName: string; photoURL: string | null }) => void;
   setSelectedCandidate?: (c: any) => void;
 }
 
 export default function Campaign3DCarousel({
-  candidates,
-  userProfiles,
-  onViewProfile,
+  candidates = [],
   setSelectedCandidate
 }: Campaign3DCarouselProps) {
-  // We'll manage exactly 3 visible cards in the rotation pool
-  const [visibleCards, setVisibleCards] = useState<UserProfileSimple[]>([]);
-  // Exactly 1 pre-fetched card in the pipeline backlog
-  const [backlogCard, setBacklogCard] = useState<UserProfileSimple | null>(null);
-  const [isFetchingBacklog, setIsFetchingBacklog] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Keep track of card rotation index or direction
-  const [rotationCount, setRotationCount] = useState(0);
-
-  // Auto-play interval ref
-  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Helper to construct a card data object from candidate or user profile
-  const mapToProfileCard = (source: any): UserProfileSimple => {
-    // Determine the user's display name, bio, etc.
-    const uid = source.uid || source.userId || source.id || "";
-    const displayName = source.displayName || "Sovereign Player";
-    const photoURL = source.photoURL || source.userPhotoURL || null;
-    const bio = source.bio || source.caption || "An active contender in the sovereign realm of Kings of the Earth.";
-    
-    // Assign some elegant royal stats
-    const hash = uid.split("").reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
-    const prestige = (source.voteCount !== undefined ? source.voteCount * 120 : (hash % 15) * 210 + 420);
-    const domainCount = (hash % 4) + 1;
+  // If there are no candidates, return empty or helper text
+  if (!candidates || candidates.length === 0) {
+    return (
+      <div className="flex flex-col justify-center items-center h-[200px] text-center border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 p-6">
+        <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">[ No active campaigns in this domain ]</p>
+      </div>
+    );
+  }
 
-    return {
-      uid,
-      displayName,
-      photoURL,
-      bio,
-      prestige,
-      domainCount,
-      keyId: `${uid}-${Math.random().toString(36).substring(2, 9)}`
-    };
-  };
+  const N = candidates.length;
 
-  // Select a random ID from userProfiles that isn't currently visible or in backlog
-  const getNextAvailableProfileId = (currentVisible: UserProfileSimple[], currentBacklog: UserProfileSimple | null): string | null => {
-    if (userProfiles.length === 0) return null;
-    
-    const activeIds = new Set([
-      ...currentVisible.map(c => c.uid),
-      ...(currentBacklog ? [currentBacklog.uid] : [])
-    ]);
+  // Build the array of cards to display. We want up to 3 cards.
+  // In a 3D stack:
+  // - card 0 is in the front (activeIndex % N)
+  // - card 1 is behind it ((activeIndex + 1) % N)
+  // - card 2 is further behind ((activeIndex + 2) % N)
+  const visibleCards = [];
+  const limit = Math.min(3, N);
+  for (let i = 0; i < limit; i++) {
+    const candidate = candidates[(activeIndex + i) % N];
+    visibleCards.push({
+      candidate,
+      indexInStack: i,
+      // Create a stable key so React transitions are smooth
+      keyId: `${candidate.id || candidate.userId}-${(activeIndex + i) % N}`
+    });
+  }
 
-    const eligibleProfiles = userProfiles.filter(p => !activeIds.has(p.uid || p.id));
-    
-    if (eligibleProfiles.length > 0) {
-      const randomIdx = Math.floor(Math.random() * eligibleProfiles.length);
-      const chosen = eligibleProfiles[randomIdx];
-      return chosen.uid || chosen.id || null;
-    }
-
-    // Fallback: if all used, allow recycling any from userProfiles
-    const randomIdx = Math.floor(Math.random() * userProfiles.length);
-    const chosen = userProfiles[randomIdx];
-    return chosen.uid || chosen.id || null;
-  };
-
-  // Core Asynchronous database/API pre-fetching pipeline
-  const prefetchNextCardAsync = async (
-    currentVisible: UserProfileSimple[],
-    currentBacklog: UserProfileSimple | null
-  ) => {
-    setIsFetchingBacklog(true);
-    try {
-      const nextId = getNextAvailableProfileId(currentVisible, currentBacklog);
-      if (!nextId) {
-        setIsFetchingBacklog(false);
-        return;
-      }
-
-      // Fetch asynchronously from Firestore 'user_profiles' to simulate a real background fetch
-      const docRef = doc(db, "user_profiles", nextId);
-      const docSnap = await getDoc(docRef);
-
-      let fetchedData: UserProfileSimple;
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        fetchedData = mapToProfileCard({ uid: docSnap.id, ...data });
-      } else {
-        // Fallback to memory map if document doesn't exist yet
-        const localProfile = userProfiles.find(p => (p.uid === nextId || p.id === nextId));
-        fetchedData = mapToProfileCard(localProfile || { uid: nextId });
-      }
-
-      // Slight natural network delay to show the beautiful pipeline indicator in the backlog status
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setBacklogCard(fetchedData);
-    } catch (err) {
-      console.warn("Pre-fetching error in background pipeline:", err);
-      setError("Pipeline fetching issue");
-    } finally {
-      setIsFetchingBacklog(false);
-    }
-  };
-
-  // Initial load
-  useEffect(() => {
-    if (userProfiles.length === 0) return;
-
-    // Set initial 3 visible cards from userProfiles or candidates
-    const initialPool = userProfiles.slice(0, 5).map(mapToProfileCard);
-    const visible = initialPool.slice(0, Math.min(3, initialPool.length));
-    
-    // Fill up if there are less than 3
-    while (visible.length < 3 && userProfiles.length > 0) {
-      const randomProfile = userProfiles[Math.floor(Math.random() * userProfiles.length)];
-      visible.push(mapToProfileCard(randomProfile));
-    }
-
-    setVisibleCards(visible);
-
-    // Initial pre-fetch of the backlog card
-    const initialBacklogId = getNextAvailableProfileId(visible, null);
-    if (initialBacklogId) {
-      setIsFetchingBacklog(true);
-      const docRef = doc(db, "user_profiles", initialBacklogId);
-      getDoc(docRef).then((snap) => {
-        if (snap.exists()) {
-          setBacklogCard(mapToProfileCard({ uid: snap.id, ...snap.data() }));
-        } else {
-          const localProfile = userProfiles.find(p => (p.uid === initialBacklogId || p.id === initialBacklogId));
-          setBacklogCard(mapToProfileCard(localProfile || { uid: initialBacklogId }));
-        }
-      }).catch((e) => {
-        console.warn("Initial backlog fetch failed:", e);
-      }).finally(() => {
-        setIsFetchingBacklog(false);
-      });
-    }
-  }, [userProfiles]);
-
-  // Handle seamless cycle rotation
-  const handleRotateNext = async () => {
-    if (visibleCards.length === 0) return;
-
-    // Reset auto-play timer on interaction
+  // Handle rotating to the next card
+  const handleRotateNext = () => {
+    setActiveIndex((prev) => prev + 1);
+    // Reset auto-play timer on user interaction
     if (autoPlayTimerRef.current) {
       clearInterval(autoPlayTimerRef.current);
     }
-
-    // Step 1: Slide foreground card out
-    // Move visible cards state: remove first card, push backlog card to the end
-    const exitedCard = visibleCards[0];
-    const nextCards = [...visibleCards.slice(1)];
-
-    if (backlogCard) {
-      nextCards.push(backlogCard);
-    } else {
-      // Fallback if backlog hasn't loaded yet (safeguard)
-      const fallbackId = getNextAvailableProfileId(visibleCards, null);
-      if (fallbackId) {
-        const fallbackProfile = userProfiles.find(p => (p.uid === fallbackId || p.id === fallbackId));
-        nextCards.push(mapToProfileCard(fallbackProfile || { uid: fallbackId }));
-      }
-    }
-
-    setVisibleCards(nextCards);
-    setRotationCount(prev => prev + 1);
-
-    // Clear backlog card slot to receive the next pre-fetch
-    setBacklogCard(null);
-
-    // Step 2: Trigger async pre-fetching for the NEXT backlog card in the background pipeline
-    prefetchNextCardAsync(nextCards, null);
-
-    // Restart auto-play if active
     if (isAutoPlaying) {
       startAutoPlay();
     }
@@ -209,12 +64,12 @@ export default function Campaign3DCarousel({
       clearInterval(autoPlayTimerRef.current);
     }
     autoPlayTimerRef.current = setInterval(() => {
-      handleRotateNext();
-    }, 6000); // cycle every 6 seconds
+      setActiveIndex((prev) => prev + 1);
+    }, 5000); // cycle every 5 seconds
   };
 
   useEffect(() => {
-    if (isAutoPlaying && visibleCards.length > 0) {
+    if (isAutoPlaying && N > 1) {
       startAutoPlay();
     }
     return () => {
@@ -222,44 +77,34 @@ export default function Campaign3DCarousel({
         clearInterval(autoPlayTimerRef.current);
       }
     };
-  }, [isAutoPlaying, visibleCards, backlogCard]);
-
-  if (userProfiles.length === 0) {
-    return (
-      <div className="flex flex-col justify-center items-center h-[200px] text-center border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 p-6">
-        <RefreshCw className="w-6 h-6 text-slate-300 dark:text-slate-600 animate-spin mb-3" />
-        <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">[ Seeking Claimant Registries... ]</p>
-      </div>
-    );
-  }
+  }, [isAutoPlaying, N]);
 
   return (
-    <div className="relative w-full flex flex-col items-center select-none pt-4 pb-2">
-      
+    <div className="relative w-full flex flex-col items-center select-none pt-1 pb-1">
       {/* 3D Stack Container */}
-      <div className="relative w-full max-w-[340px] sm:max-w-[360px] h-[175px] flex justify-center items-end pb-4">
+      <div className="relative w-full max-w-[280px] sm:max-w-[300px] h-[175px] flex justify-center items-end pb-3">
         <AnimatePresence mode="popLayout">
-          {visibleCards.map((profile, index) => {
+          {visibleCards.map(({ candidate, indexInStack, keyId }) => {
             // Index 0: Foreground / Active Card
             // Index 1: Second Card / Stack Level 1
             // Index 2: Third Card / Stack Level 2
 
             // Visual transformation calculations for dynamic depth stacking
-            const scale = 1 - index * 0.07;
-            const yOffset = -index * 16;
-            const opacity = 1 - index * 0.28;
-            const zIndex = 30 - index * 10;
+            const scale = 1 - indexInStack * 0.05;
+            const yOffset = -indexInStack * 12;
+            const opacity = 1 - indexInStack * 0.25;
+            const zIndex = 30 - indexInStack * 10;
 
-            const isForeground = index === 0;
+            const isForeground = indexInStack === 0;
 
             return (
               <motion.div
-                key={profile.keyId}
+                key={keyId}
                 layout
                 style={{ zIndex }}
                 initial={
-                  index === 2
-                    ? { opacity: 0, scale: 0.7, y: -45 }
+                  indexInStack === 2
+                    ? { opacity: 0, scale: 0.7, y: -30 }
                     : { opacity, scale, y: yOffset }
                 }
                 animate={{
@@ -269,65 +114,99 @@ export default function Campaign3DCarousel({
                   transition: { type: "spring", stiffness: 350, damping: 28 }
                 }}
                 exit={{
-                  x: -320,
-                  rotate: -15,
+                  x: -280,
+                  rotate: -12,
                   opacity: 0,
                   scale: 0.9,
                   transition: { duration: 0.35, ease: "easeInOut" }
                 }}
-                className={`absolute w-full max-w-[320px] sm:max-w-[340px] bg-white dark:bg-slate-950 border ${
+                className={`absolute w-full max-w-[260px] sm:max-w-[285px] bg-white dark:bg-slate-950 border ${
                   isForeground
-                    ? "border-amber-500/50 shadow-lg shadow-amber-500/5 dark:shadow-amber-500/10"
-                    : "border-slate-200 dark:border-slate-850 shadow-md"
-                } rounded-2xl p-4 text-left flex flex-col justify-between h-[130px] cursor-pointer transition-colors duration-150`}
+                    ? "border-amber-500/50 shadow-md shadow-amber-500/5 dark:shadow-amber-500/10"
+                    : "border-slate-200 dark:border-slate-850 shadow-sm"
+                } rounded-2xl overflow-hidden text-left flex flex-col justify-between h-[145px] cursor-pointer transition-colors duration-150`}
                 onClick={() => {
                   if (isForeground) {
-                    onViewProfile({
-                      uid: profile.uid,
-                      displayName: profile.displayName,
-                      photoURL: profile.photoURL
-                    });
+                    if (setSelectedCandidate) {
+                      setSelectedCandidate(candidate);
+                    }
                   } else {
                     // Clicking on background cards brings them to the front
                     handleRotateNext();
                   }
                 }}
               >
-                {/* Gold Crest Top Tag */}
-                <div className="flex justify-between items-center w-full">
-                  <div className="flex items-center gap-1.5">
-                    <Crown className={`w-3.5 h-3.5 ${isForeground ? "text-amber-500" : "text-slate-400"}`} />
-                    <span className="text-[9px] font-mono font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
-                      Claimant {3 - index === 3 ? "Royal" : 3 - index === 2 ? "Nobility" : "Vanguard"}
-                    </span>
+                {/* Miniature Banner */}
+                <div className="h-11 w-full relative overflow-hidden bg-slate-100 dark:bg-slate-900 shrink-0">
+                  {candidate.bannerURL ? (
+                    <img
+                      src={candidate.bannerURL}
+                      alt="Campaign Banner"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-r from-amber-500/10 to-amber-500/20" />
+                  )}
+                  {/* Banner Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                  {/* Top-Right Badge (Votes) */}
+                  <div className="absolute top-1.5 right-2 px-1.5 py-0.5 rounded bg-amber-500/90 text-[7px] font-mono font-bold tracking-wider text-white flex items-center gap-1 shadow-xs">
+                    <Vote className="w-2 h-2" />
+                    <span>{candidate.voteCount || 0} VOTES</span>
+                  </div>
+
+                  {/* Floating Avatar & Claimant Info */}
+                  <div className="absolute bottom-1 left-2.5 flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full overflow-hidden border border-white dark:border-slate-800 bg-slate-300 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                      {candidate.photoURL ? (
+                        <img
+                          src={candidate.photoURL}
+                          alt={candidate.displayName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[8px]">👑</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] text-white font-black tracking-tight truncate max-w-[120px]">
+                        {candidate.displayName}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Profile Card Body */}
-                <div className="flex items-start gap-3 mt-2 flex-1">
-                  <img
-                    src={profile.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
-                    alt={profile.displayName}
-                    className={`w-11 h-11 rounded-full object-cover border-2 ${
-                      isForeground ? "border-amber-500" : "border-slate-300 dark:border-slate-800"
-                    } shrink-0`}
-                    onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.displayName)}&background=random`; }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-display font-black text-sm text-slate-800 dark:text-white truncate uppercase tracking-tight">
-                      {profile.displayName}
+                {/* Card Info Body */}
+                <div className="p-2.5 flex-1 flex flex-col justify-between overflow-hidden">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1">
+                      <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                      <span className="text-[7px] font-mono font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
+                        {indexInStack === 0 ? "Featured" : "Up Next"}
+                      </span>
+                    </div>
+                    <h4 className="font-display font-black text-[11px] text-slate-800 dark:text-white uppercase tracking-tight line-clamp-1">
+                      {candidate.campaignTitle || `${candidate.displayName}'s Campaign`}
                     </h4>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 line-clamp-2 mt-0.5 leading-relaxed font-medium">
-                      {profile.bio}
+                    <p className="text-[9px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight font-sans">
+                      {candidate.bio || "An active contender in this sovereign domain."}
                     </p>
                   </div>
+
+                  {/* Action prompt */}
+                  {isForeground && (
+                    <div className="flex items-center justify-end text-[8px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider gap-0.5 group mt-1">
+                      <span>Enter</span>
+                      <ChevronRight className="w-2.5 h-2.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
-
     </div>
   );
 }

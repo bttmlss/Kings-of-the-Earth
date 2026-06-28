@@ -449,6 +449,14 @@ export default function App() {
                     setViewedUser(targetedUser);
                     setCurrentTab("profile");
                   }}
+                  onViewCampaign={(campaignId) => {
+                    const camp = campaigns.find(c => c.id === campaignId);
+                    if (camp) {
+                      setCurrentTab("campaign");
+                      setSelectedCampaign(camp);
+                      setFocusedCampaignUserId(null);
+                    }
+                  }}
                 />
               </PullToRefresh>
             </motion.div>
@@ -507,6 +515,11 @@ export default function App() {
                 onBack={() => setViewedUser(null)}
                 onEditingChange={setIsProfileEditing}
                 onOpenNotifications={() => setCurrentTab("notifications")}
+                userProfiles={userProfiles}
+                onViewProfile={(targetedUser) => {
+                  setViewedUser(targetedUser);
+                  setCurrentTab("profile");
+                }}
               />
             </motion.div>
           ) : currentTab === "notifications" ? (

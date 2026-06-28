@@ -46,16 +46,26 @@ export default function CandidateCampaignScreen({
   useEffect(() => {
     // Log campaign visit for this specific candidate
     if (candidate.userId && candidate.userId !== auth.currentUser?.uid) {
-      auth.currentUser?.getIdToken().then(token => {
+      if (auth.currentUser) {
+        auth.currentUser.getIdToken().then(token => {
+          fetch("/api/log-campaign-visit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ targetUserId: candidate.userId })
+          }).catch(err => console.error("Failed to log candidate campaign visit", err));
+        }).catch(() => {});
+      } else {
         fetch("/api/log-campaign-visit", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({ targetUserId: candidate.userId })
         }).catch(err => console.error("Failed to log candidate campaign visit", err));
-      }).catch(() => {});
+      }
     }
 
     let unsubscribe: (() => void) | undefined;
@@ -119,6 +129,9 @@ export default function CandidateCampaignScreen({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(candidate.campaignTitle || candidate.displayName);
   const [editBannerURL, setEditBannerURL] = useState(candidate.bannerURL || "");
+  const [editPendingTime, setEditPendingTime] = useState<"none" | "24hours" | "72hours" | "upon_approval">(
+    campaign.pendingTime || "24hours"
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -166,6 +179,10 @@ export default function CandidateCampaignScreen({
     setEditCoverBio(candidate.bio || "");
     setEditBio(candidate.bio || "");
   }, [candidate]);
+
+  useEffect(() => {
+    setEditPendingTime(campaign.pendingTime || "24hours");
+  }, [campaign.pendingTime]);
 
   const scrollToSection = (index: number) => {
     const el = document.getElementById(`section-${index}`);
@@ -217,6 +234,26 @@ export default function CandidateCampaignScreen({
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to update campaign details");
+      }
+
+      if (userId === campaign.creatorId) {
+        const settingsRes = await fetch("/api/update-campaign-settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            campaignId: campaign.id,
+            domainTitle: campaign.domainTitle,
+            pendingTime: editPendingTime
+          })
+        });
+
+        if (!settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          throw new Error(settingsData.error || "Failed to update campaign settings");
+        }
       }
 
       setLocalCampaignTitle(editTitle);
@@ -376,6 +413,7 @@ export default function CandidateCampaignScreen({
                       key={post.id}
                       post={post}
                       currentUser={{ uid: userId, displayName: userName }}
+                      onViewCampaign={onBack}
                       onDelete={(deletedId) => setPosts(posts.filter(p => p.id !== deletedId))}
                     />
                   ))
@@ -447,14 +485,15 @@ export default function CandidateCampaignScreen({
                             setEditTitle(localCampaignTitle);
                             setEditBannerURL(localBannerURL);
                             setEditCoverBio(candidate.bio || "");
+                            setEditPendingTime(campaign.pendingTime || "24hours");
                             setEditError(null);
                             setIsEditModalOpen(true);
                           }}
                           className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-amber-400 dark:text-amber-400 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
-                          title="Edit Cover"
+                          title="Edit Campaign"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                          <span>Edit Cover</span>
+                          <span>Edit</span>
                         </button>
                       )}
                     </div>
@@ -591,33 +630,33 @@ export default function CandidateCampaignScreen({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               transition={{ type: "spring", duration: 0.3 }}
-              className="my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full font-sans text-left relative max-h-[85vh] sm:max-h-[90vh] overflow-y-auto scrollbar-thin"
+              className="my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl max-w-sm w-full font-sans text-left relative max-h-[85vh] sm:max-h-[90vh] overflow-y-auto scrollbar-thin"
             >
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                className="absolute top-4 right-4 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
 
-              <h3 className="font-display font-black text-slate-900 dark:text-white text-lg uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-amber-500" />
+              <h3 className="font-display font-black text-slate-900 dark:text-white text-base uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                <Edit3 className="w-4 h-4 text-amber-500" />
                 Customize Campaign
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 font-mono">
-                personalize the appearance of your claim to the crown
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4 font-mono">
+                personalize your claim to the crown
               </p>
 
               {editError && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 mb-4">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-[10px] flex items-center gap-2 mb-3">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{editError}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSaveChanges} className="space-y-4">
+              <form onSubmit={handleSaveChanges} className="space-y-3">
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  <label className="block text-[9px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                     Campaign Title
                   </label>
                   <input
@@ -626,53 +665,53 @@ export default function CandidateCampaignScreen({
                     onChange={(e) => setEditTitle(e.target.value)}
                     maxLength={100}
                     placeholder={`${candidate.displayName}'s Campaign`}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans"
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans"
                   />
-                  <div className="flex justify-end text-[9px] font-mono text-slate-400 mt-1 uppercase">
-                    {editTitle.length} / 100 characters
+                  <div className="flex justify-end text-[8px] font-mono text-slate-400 mt-1 uppercase">
+                    {editTitle.length} / 100
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  <label className="block text-[9px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                     Campaign Bio
                   </label>
                   <textarea
                     value={editCoverBio}
                     onChange={(e) => setEditCoverBio(e.target.value)}
                     maxLength={500}
-                    rows={3}
+                    rows={2}
                     placeholder="Describe your claim to the crown or mission statement..."
-                    className="w-full px-4 py-2 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans resize-none"
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans resize-none"
                   />
-                  <div className="flex justify-end text-[9px] font-mono text-slate-400 mt-1 uppercase">
-                    {editCoverBio.length} / 500 characters
+                  <div className="flex justify-end text-[8px] font-mono text-slate-400 mt-1 uppercase">
+                    {editCoverBio.length} / 500
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
+                  <label className="block text-[9px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                     Campaign Cover Banner
                   </label>
                   
                   {editBannerURL ? (
-                    <div className="relative group rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-32 flex items-center justify-center">
+                    <div className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-20 flex items-center justify-center">
                       <img 
                         src={editBannerURL || undefined} 
                         alt="Banner Preview" 
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <label 
                           htmlFor="banner-upload" 
-                          className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-900 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                          className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-900 text-[9px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
                         >
-                          Replace Banner
+                          Replace
                         </label>
                         <button
                           type="button"
                           onClick={() => setEditBannerURL("")}
-                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                          className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
                         >
                           Remove
                         </button>
@@ -691,25 +730,22 @@ export default function CandidateCampaignScreen({
                         const file = e.dataTransfer.files?.[0];
                         if (file) processFile(file);
                       }}
-                      className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all ${
+                      className={`border-2 border-dashed rounded-xl p-3 flex flex-col items-center justify-center transition-all h-20 ${
                         isDragging 
                           ? "border-amber-500 bg-amber-500/5" 
                           : "border-slate-250 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-950/10"
                       }`}
                     >
-                      <UploadCloud className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2 animate-pulse" />
-                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium text-center">
-                        Drag and drop your banner image here, or
+                      <UploadCloud className="w-5 h-5 text-slate-400 dark:text-slate-500 mb-1 animate-pulse" />
+                      <p className="text-[10px] text-slate-600 dark:text-slate-300 font-medium text-center">
+                        Drag image here, or
                       </p>
                       <label 
                         htmlFor="banner-upload" 
-                        className="mt-2 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
+                        className="mt-1 px-2 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white text-[9px] font-mono font-bold uppercase tracking-wider cursor-pointer transition-all hover:scale-105"
                       >
-                        Browse Files
+                        Browse
                       </label>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-2 font-mono uppercase">
-                        PNG, JPG or WEBP (Max 4MB)
-                      </p>
                     </div>
                   )}
                   
@@ -722,26 +758,46 @@ export default function CandidateCampaignScreen({
                   />
                 </div>
 
-                <div className="flex gap-3 justify-end pt-4 border-t border-slate-150 dark:border-slate-800">
+                {userId === campaign.creatorId && (
+                  <div className="space-y-1 pt-1">
+                    <label htmlFor="settingsPendingTime" className="block text-[9px] font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                      Validation Period
+                    </label>
+                    <select
+                      id="settingsPendingTime"
+                      value={editPendingTime}
+                      onChange={(e) => setEditPendingTime(e.target.value as any)}
+                      disabled={isSaving}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-slate-900 dark:text-white text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-amber-500/30 focus:border-amber-500 transition-all font-sans cursor-pointer"
+                    >
+                      <option value="none">None (Instant)</option>
+                      <option value="24hours">24 Hours</option>
+                      <option value="72hours">72 Hours</option>
+                      <option value="upon_approval">Leader Approval Only</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex gap-2 justify-end pt-3 border-t border-slate-150 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => setIsEditModalOpen(false)}
-                    className="px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-350 cursor-pointer transition-all"
+                    className="px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-350 cursor-pointer transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="px-5 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-md shadow-amber-500/10 flex items-center gap-1.5 transition-all"
+                    className="px-4 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded-xl bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-md shadow-amber-500/10 flex items-center gap-1.5 transition-all"
                   >
                     {isSaving ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3 h-3 animate-spin" />
                         <span>Saving...</span>
                       </>
                     ) : (
-                      <span>Save Changes</span>
+                      <span>Save</span>
                     )}
                   </button>
                 </div>
@@ -771,6 +827,7 @@ export default function CandidateCampaignScreen({
               <PostCard
                 post={selectedMediaPost}
                 currentUser={{ uid: userId, displayName: userName }}
+                onViewCampaign={onBack}
                 onDelete={(deletedId) => {
                   setPosts(posts.filter(p => p.id !== deletedId));
                   setSelectedMediaPost(null);

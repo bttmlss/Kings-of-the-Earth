@@ -10,6 +10,7 @@ import { useInView } from "react-intersection-observer";
 interface HomeFeedProps {
   currentUser: User;
   onViewProfile: (user: { uid: string; displayName: string | null; photoURL?: string | null }) => void;
+  onViewCampaign?: (campaignId: string) => void;
 }
 
 interface TrackedPostCardProps {
@@ -17,11 +18,12 @@ interface TrackedPostCardProps {
   post: any;
   currentUser: any;
   onViewProfile?: any;
+  onViewCampaign?: (campaignId: string) => void;
   onPostViewed: (postId: string, duration: number) => void;
 }
 
 // Sub-component that uses useInView to track engagement on each individual post
-function TrackedPostCard({ post, currentUser, onViewProfile, onPostViewed }: TrackedPostCardProps) {
+function TrackedPostCard({ post, currentUser, onViewProfile, onViewCampaign, onPostViewed }: TrackedPostCardProps) {
   const { ref, inView } = useInView({
     threshold: 0.5, // 50% visibility threshold
     triggerOnce: false,
@@ -57,13 +59,14 @@ function TrackedPostCard({ post, currentUser, onViewProfile, onPostViewed }: Tra
       <PostCard 
         post={post} 
         currentUser={currentUser} 
-        onViewProfile={onViewProfile} 
+        onViewProfile={onViewProfile}
+        onViewCampaign={onViewCampaign}
       />
     </div>
   );
 }
 
-export default function HomeFeed({ currentUser, onViewProfile }: HomeFeedProps) {
+export default function HomeFeed({ currentUser, onViewProfile, onViewCampaign }: HomeFeedProps) {
   const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -320,6 +323,7 @@ export default function HomeFeed({ currentUser, onViewProfile }: HomeFeedProps) 
               post={post} 
               currentUser={currentUser} 
               onViewProfile={onViewProfile} 
+              onViewCampaign={onViewCampaign}
               onPostViewed={handlePostViewed}
             />
           ))}

@@ -23,6 +23,7 @@ export interface Campaign {
   isFrozen?: boolean;
   currentKingId?: string | null;
   totalVotes?: number;
+  pendingTime?: "none" | "24hours" | "72hours" | "upon_approval";
 }
 
 export interface Candidate {
@@ -36,6 +37,8 @@ export interface Candidate {
   prefix?: string;
   campaignTitle?: string;
   bannerURL?: string;
+  status?: "pending" | "approved" | "active";
+  pendingUntil?: any; // Firestore Timestamp or null
 }
 
 export interface VoteLog {

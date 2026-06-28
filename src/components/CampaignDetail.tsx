@@ -15,7 +15,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit3, Clock, Check, Settings } from "lucide-react";
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
@@ -125,7 +125,7 @@ export default function CampaignDetail({
   const [isLeaving, setIsLeaving] = useState(false);
   const [showOptInPrompt, setShowOptInPrompt] = useState(false);
   const [showQuitPrompt, setShowQuitPrompt] = useState(false);
-  const [activeTab, setActiveTab] = useState<"leaderboard" | "court">("leaderboard");
+  const [activeTab, setActiveTab] = useState<"leaderboard" | "court" | "pending">("leaderboard");
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [creatorCourt, setCreatorCourt] = useState<any | null>(null);
@@ -135,7 +135,124 @@ export default function CampaignDetail({
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [initialSelectDone, setInitialSelectDone] = useState(false);
 
+  // Real-time Campaign Object & Editing States
+  const [currentCampaign, setCurrentCampaign] = useState<Campaign>(campaign);
+  const [isEditSettingsOpen, setIsEditSettingsOpen] = useState(false);
+  const [settingsTitle, setSettingsTitle] = useState(campaign.domainTitle || "");
+  const [settingsPendingTime, setSettingsPendingTime] = useState<"none" | "24hours" | "72hours" | "upon_approval">(
+    campaign.pendingTime || "24hours"
+  );
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isApproving, setIsApproving] = useState<string | null>(null);
+
   const isGuest = userId.startsWith("local_");
+
+  // Subscribe to real-time changes of the campaign settings
+  useEffect(() => {
+    setCurrentCampaign(campaign);
+    setSettingsTitle(campaign.domainTitle || "");
+    setSettingsPendingTime(campaign.pendingTime || "24hours");
+  }, [campaign]);
+
+  useEffect(() => {
+    if (!campaign?.id) return;
+    const docRef = doc(db, "campaigns", campaign.id);
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const updatedCamp = {
+          id: snap.id,
+          ...data
+        } as Campaign;
+        setCurrentCampaign(updatedCamp);
+        setSettingsTitle(updatedCamp.domainTitle || "");
+        setSettingsPendingTime(updatedCamp.pendingTime || "24hours");
+      }
+    }, (err) => {
+      console.error("Error listening to campaign settings changes:", err);
+    });
+    return () => unsubscribe();
+  }, [campaign.id]);
+
+  const isCandidatePending = (cand: Candidate) => {
+    if (cand.status !== "pending") return false;
+    if (!cand.pendingUntil) return true; // upon_approval or indefinite manually pending
+    
+    // Check if timestamp is expired
+    const pendingUntilMs = cand.pendingUntil.seconds 
+      ? cand.pendingUntil.seconds * 1000 
+      : new Date(cand.pendingUntil as any).getTime();
+    return Date.now() < pendingUntilMs;
+  };
+
+  const activeCandidates = candidates.filter(c => !isCandidatePending(c));
+  const pendingCandidates = candidates.filter(c => isCandidatePending(c));
+
+  const handleApproveCandidate = async (candId: string) => {
+    setIsApproving(candId);
+    setError(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/approve-candidate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+          candidateId: candId
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to approve candidate");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to approve claimant.");
+    } finally {
+      setIsApproving(null);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    setError(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/update-campaign-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+          domainTitle: settingsTitle,
+          pendingTime: settingsPendingTime
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save settings");
+      }
+
+      setIsEditSettingsOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to save campaign settings.");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   // Auto-select candidate from profile view
   useEffect(() => {
@@ -162,16 +279,26 @@ export default function CampaignDetail({
     
     // Log campaign visit for the campaign creator
     if (campaign.creatorId && campaign.creatorId !== auth.currentUser?.uid) {
-      auth.currentUser?.getIdToken().then(token => {
+      if (auth.currentUser) {
+        auth.currentUser.getIdToken().then(token => {
+          fetch("/api/log-campaign-visit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ targetUserId: campaign.creatorId })
+          }).catch(err => console.error("Failed to log campaign visit", err));
+        }).catch(() => {});
+      } else {
         fetch("/api/log-campaign-visit", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({ targetUserId: campaign.creatorId })
         }).catch(err => console.error("Failed to log campaign visit", err));
-      }).catch(() => {});
+      }
     }
     
     const key = `recent_campaigns_${userId}`;
@@ -241,10 +368,13 @@ export default function CampaignDetail({
     }
   };
 
-  const leaderboardCandidates = candidates.filter((c) => c.voteCount > 0);
+  const leaderboardCandidates = activeCandidates.filter(c => c.voteCount > 0);
   const userLeaderboardIndex = leaderboardCandidates.findIndex((c) => c.userId === userId);
   const userDetailRank = userLeaderboardIndex !== -1 ? userLeaderboardIndex + 1 : null;
   const totalCandidates = leaderboardCandidates.length;
+
+  const currentUserCandidate = candidates.find((c) => c.userId === userId);
+  const isCurrentUserPending = currentUserCandidate ? isCandidatePending(currentUserCandidate) : false;
 
   // Reset scroll to top instantly when campaign changes
   useEffect(() => {
@@ -269,9 +399,9 @@ export default function CampaignDetail({
     return () => unsubscribe();
   }, [campaign.id, campaign.creatorId]);
 
-  const isUserInPedigree = userId === campaign.creatorId || (creatorCourt?.members || []).some((m: any) => m.userId === userId);
+  const isUserInPedigree = userId === currentCampaign.creatorId || (creatorCourt?.members || []).some((m: any) => m.userId === userId);
 
-  const cleanedDetailTitle = campaign.domainTitle || "";
+  const cleanedDetailTitle = currentCampaign.domainTitle || "";
 
   // Monitor user's vote under this campaign
   useEffect(() => {
@@ -366,7 +496,7 @@ export default function CampaignDetail({
         },
         body: JSON.stringify({
           campaignId: campaign.id,
-          displayName: userName,
+          displayName: userName || auth.currentUser?.displayName || "Sovereign Claimant",
         })
       });
 
@@ -533,7 +663,7 @@ export default function CampaignDetail({
   if (selectedCandidate) {
     return (
       <CandidateCampaignScreen
-        campaign={campaign}
+        campaign={currentCampaign}
         candidate={selectedCandidate}
         onBack={() => setSelectedCandidate(null)}
         userId={userId}
@@ -711,12 +841,12 @@ export default function CampaignDetail({
             >
               <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-              <div className="absolute top-4 right-4 z-20 flex items-center">
+              <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
                 {userJoined ? (
                   <button
                      onClick={() => {
                        if (isGuest) {
-                         setError("Guests cannot quit campaigns.");
+                         setError(isCurrentUserPending ? "Guests cannot cancel requests." : "Guests cannot quit campaigns.");
                          return;
                        }
                        setShowQuitPrompt(true)
@@ -725,7 +855,7 @@ export default function CampaignDetail({
                      className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-xl text-[10px] font-mono tracking-wider font-extrabold border transition-all cursor-pointer shadow-xs bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:bg-rose-500/10 text-slate-500 hover:text-[#e11d48] min-w-[80px]"
                   >
                     <LogOut className="w-3.5 h-3.5 shrink-0" />
-                    <span>{isLeaving ? "LVR..." : "QUIT"}</span>
+                    <span>{isLeaving ? (isCurrentUserPending ? "CNL..." : "LVR...") : (isCurrentUserPending ? "CANCEL REQ" : "QUIT")}</span>
                   </button>
                 ) : (
                   <button
@@ -751,7 +881,7 @@ export default function CampaignDetail({
                     {cleanedDetailTitle}
                   </h1>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-wider">
-                    {campaign.domainType || "KINGDOM"} • <strong className="text-slate-700 dark:text-slate-200">{candidates.length}</strong> {candidates.length === 1 ? "contender" : "contenders"}
+                    {currentCampaign.domainType || "KINGDOM"} • <strong className="text-slate-700 dark:text-slate-200">{activeCandidates.length}</strong> {activeCandidates.length === 1 ? "contender" : "contenders"}
                   </p>
                 </div>
               </div>
@@ -762,7 +892,7 @@ export default function CampaignDetail({
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 shadow-sm relative overflow-hidden shrink-0 flex flex-col gap-5"
+              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden shrink-0 flex flex-col gap-3"
             >
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-amber-500/20" />
               
@@ -782,7 +912,7 @@ export default function CampaignDetail({
 
               {/* Quick list of featured campaigns (except current one) */}
               {(() => {
-                if (candidates.length === 0) {
+                if (activeCandidates.length === 0) {
                   return (
                     <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
                       [ No other active campaigns available ]
@@ -791,7 +921,7 @@ export default function CampaignDetail({
                 }
                 return (
                   <Campaign3DCarousel
-                    candidates={candidates}
+                    candidates={activeCandidates}
                     userProfiles={userProfiles || []}
                     onViewProfile={onViewProfile || (() => {})}
                     setSelectedCandidate={setSelectedCandidate}
@@ -834,6 +964,37 @@ export default function CampaignDetail({
 
           {/* Leaderboard content inside scrollable wrapper */}
           <div className="flex-1 overflow-y-auto pr-1 pb-6 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent flex flex-col min-h-0">
+            {/* Elegant Tab Switcher for Domain Leaderboard vs Pending Approvals */}
+            {userId === currentCampaign.creatorId && pendingCandidates.length > 0 && (
+              <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("leaderboard")}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-extrabold tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+                    activeTab === "leaderboard"
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "text-slate-500 hover:text-amber-500 bg-slate-100 dark:bg-slate-800/50"
+                  }`}
+                >
+                  Leaderboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("pending")}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-extrabold tracking-wider uppercase rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === "pending"
+                      ? "bg-rose-500 text-white shadow-xs"
+                      : "text-slate-500 hover:text-rose-500 bg-slate-100 dark:bg-slate-800/50"
+                  }`}
+                >
+                  <span>Escrow & Approvals</span>
+                  <span className="px-1.5 py-0.5 bg-black/10 dark:bg-white/10 text-[9px] rounded-full font-black">
+                    {pendingCandidates.length}
+                  </span>
+                </button>
+              </div>
+            )}
+
             <AnimatePresence mode="wait">
               {activeTab === "leaderboard" && (
                 <motion.div
@@ -1010,6 +1171,92 @@ export default function CampaignDetail({
               )}
             </motion.div>
           )}
+
+          {activeTab === "pending" && (
+            <motion.div
+              key="pending"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.18 }}
+              className="w-full h-full flex flex-col space-y-4"
+            >
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h2 className="font-display font-medium text-lg text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-slate-400" />
+                  Pending Escrow & Approvals
+                </h2>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono leading-relaxed">
+                [ ROYAL SECURITY ESCROW: THE FOLLOWING CANDIDATES REQUEST ACCESS TO THE LEADERBOARD IN THIS DOMAIN. ]
+              </p>
+
+              {pendingCandidates.length === 0 ? (
+                <div className="p-10 text-center bg-slate-50 dark:bg-slate-900/20 border border-dashed border-slate-250 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 text-xs font-mono shrink-0">
+                  📯 [ ALL ESCROW CLAIMS CLEARED AND INSTATED ]
+                </div>
+              ) : (
+                <div className="border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-[#07080a] flex flex-col shadow-sm relative font-mono select-none rounded-[20px] overflow-hidden">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-slate-50 dark:bg-[#07080a]">
+                    {pendingCandidates.map((cand, idx) => {
+                      const profile = userProfiles?.find((p) => p.uid === cand.userId);
+                      const currentName = profile?.displayName || cand.displayName;
+                      const currentPhoto = profile?.photoURL !== undefined ? profile.photoURL : (cand.photoURL || null);
+                      
+                      // Calculate validation countdown
+                      let remainingText = "Manual approval required";
+                      if (cand.pendingUntil) {
+                        const remainingMs = (cand.pendingUntil.seconds 
+                          ? cand.pendingUntil.seconds * 1000 
+                          : new Date(cand.pendingUntil as any).getTime()) - Date.now();
+                        if (remainingMs > 0) {
+                          const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+                          const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+                          remainingText = `${hours}h ${minutes}m remaining`;
+                        } else {
+                          remainingText = "Escrow period completed";
+                        }
+                      }
+
+                      return (
+                        <div key={cand.id || cand.userId || idx} className="p-4 flex items-center justify-between gap-4 hover:bg-slate-200/20 dark:hover:bg-slate-900/20 transition-all">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-250 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                              {currentPhoto ? (
+                                <img src={currentPhoto || undefined} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-sm">👑</span>
+                              )}
+                            </div>
+                            <div className="flex flex-col min-w-0 leading-tight">
+                              <span className="font-extrabold text-slate-800 dark:text-slate-100 uppercase text-xs truncate">
+                                {currentName}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
+                                <Clock className="w-3 h-3 text-amber-500" />
+                                {remainingText}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleApproveCandidate(cand.userId)}
+                            disabled={isApproving === cand.userId}
+                            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/20 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center gap-1 transition-all shrink-0"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>{isApproving === cand.userId ? "APPROVING..." : "APPROVE"}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
         </div>
@@ -1069,7 +1316,7 @@ export default function CampaignDetail({
                 <LogOut className="w-4.5 h-4.5 shrink-0" />
               </div>
               <p className="text-xs text-slate-805 dark:text-slate-100 mb-5 leading-relaxed">
-                do you wish to quit this campaign? [yes or no]
+                {isCurrentUserPending ? "do you wish to cancel your request to join this campaign? [yes or no]" : "do you wish to quit this campaign? [yes or no]"}
               </p>
               <div className="flex gap-3 justify-center">
                 <button

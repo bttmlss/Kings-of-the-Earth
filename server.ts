@@ -101,6 +101,11 @@ filter.isProfane = function(text: string): boolean {
 const validationCache = new Map<string, { result: any, expiry: number }>();
 
 async function validateNameAndBioWithGemini(displayName: string, bio?: string | null): Promise<{ blocked: boolean, reason: string }> {
+  const nameLower = (displayName || "").trim().toLowerCase();
+  if (nameLower === "sovereign player" || nameLower === "sovereign lord" || nameLower === "sovereign claimant") {
+    return { blocked: false, reason: "" };
+  }
+
   const cacheKey = `title_val:${(displayName || "").trim().toLowerCase()}:${(bio || "").trim().toLowerCase()}`;
   const cached = validationCache.get(cacheKey);
   if (cached && cached.expiry > Date.now()) {
@@ -434,6 +439,19 @@ async function startServer() {
         if (!candidateDoc.exists) {
           throw new Error("Candidate does not exist.");
         }
+        
+        const candidateData = candidateDoc.data() || {};
+        const candStatus = candidateData.status || "active";
+        const pendingUntilVal = candidateData.pendingUntil 
+          ? (candidateData.pendingUntil.toDate ? candidateData.pendingUntil.toDate() : new Date(candidateData.pendingUntil)) 
+          : null;
+        
+        if (candStatus === "pending") {
+          if (!pendingUntilVal || Date.now() < pendingUntilVal.getTime()) {
+            throw new Error("This candidate is currently pending and cannot receive votes.");
+          }
+        }
+
         if (voteLogDoc.exists) {
           throw new Error("You have already cast your single vote.");
         }
@@ -467,7 +485,6 @@ async function startServer() {
         }
 
         // --- 2. WRITE PHASE (ALL SETS, UPDATES, AND DELETIONS MUST HAPPEN HERE) ---
-        const candidateData = candidateDoc.data() || {};
         const newVoteCount = (candidateData.voteCount || 0) + 1;
         transaction.update(candidateDocRef, { voteCount: FieldValue.increment(1) });
 
@@ -623,7 +640,7 @@ async function startServer() {
       const decodedToken = await getAuth().verifyIdToken(token);
       const userId = decodedToken.uid;
 
-      let { domainTitle, domainType, slug, prefix } = req.body;
+      let { domainTitle, domainType, slug, prefix, pendingTime } = req.body;
       if (!domainTitle || !domainType || !slug) {
         return res.status(400).json({ error: "Missing required fields" });
       }
@@ -666,6 +683,7 @@ async function startServer() {
             status: "live",
             domainType: domainType || "Miscellaneous",
             totalVotes: 0,
+            pendingTime: pendingTime || "24hours",
           });
 
           // initial empty candle - write directly to avoid runtime gets after sets
@@ -696,6 +714,8 @@ async function startServer() {
              bio: profileData?.bio || null,
              photoURL: profileData?.photoURL || null,
              prefix: prefix || "King of",
+             status: "active",
+             pendingUntil: null,
            });
         }
       });
@@ -766,6 +786,26 @@ async function startServer() {
           throw new Error("You are already competing in this campaign.");
         }
 
+        const campaignData = campaignDoc.data() || {};
+        const pendingTime = campaignData.pendingTime || "24hours"; // default to 24hours
+        
+        let status = "pending";
+        let pendingUntil = null;
+
+        if (pendingTime === "none") {
+          status = "active";
+          pendingUntil = null;
+        } else if (pendingTime === "24hours") {
+          status = "pending";
+          pendingUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        } else if (pendingTime === "72hours") {
+          status = "pending";
+          pendingUntil = new Date(Date.now() + 72 * 60 * 60 * 1000);
+        } else if (pendingTime === "upon_approval") {
+          status = "pending";
+          pendingUntil = null;
+        }
+
         transaction.set(candidateDocRef, {
           id: userId,
           userId: userId,
@@ -774,12 +814,107 @@ async function startServer() {
           joinedAt: FieldValue.serverTimestamp(),
           bio: finalBio,
           photoURL: finalPhotoURL,
+          status: status,
+          pendingUntil: pendingUntil,
         });
       });
 
       console.log(`[AUDIT] User ${userId} joined campaign ${campaignId}`);
       
       updateUserDailyCandle(db, userId, 2).catch(e => console.error(e));
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // API Route - update-campaign-settings
+  app.post("/api/update-campaign-settings", async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split("Bearer ")[1];
+      const decodedToken = await getAuth().verifyIdToken(token);
+      const userId = decodedToken.uid;
+
+      const { campaignId, domainTitle, pendingTime } = req.body;
+      if (!campaignId || !domainTitle || !pendingTime) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const validPendingTimes = ["none", "24hours", "72hours", "upon_approval"];
+      if (!validPendingTimes.includes(pendingTime)) {
+        return res.status(400).json({ error: "Invalid pending time selection" });
+      }
+
+      const db = getFirestore();
+      const campaignDocRef = db.doc(`campaigns/${campaignId}`);
+
+      await db.runTransaction(async (transaction) => {
+        const campaignDoc = await transaction.get(campaignDocRef);
+        if (!campaignDoc.exists) {
+          throw new Error("Campaign does not exist.");
+        }
+        const campaignData = campaignDoc.data() || {};
+        if (campaignData.creatorId !== userId) {
+          throw new Error("Only the campaign leader can update campaign settings.");
+        }
+
+        transaction.update(campaignDocRef, {
+          domainTitle: domainTitle,
+          pendingTime: pendingTime
+        });
+      });
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // API Route - approve-candidate
+  app.post("/api/approve-candidate", async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split("Bearer ")[1];
+      const decodedToken = await getAuth().verifyIdToken(token);
+      const userId = decodedToken.uid;
+
+      const { campaignId, candidateId } = req.body;
+      if (!campaignId || !candidateId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const db = getFirestore();
+      const campaignDocRef = db.doc(`campaigns/${campaignId}`);
+      const candidateDocRef = db.doc(`campaigns/${campaignId}/candidates/${candidateId}`);
+
+      await db.runTransaction(async (transaction) => {
+        const campaignDoc = await transaction.get(campaignDocRef);
+        if (!campaignDoc.exists) {
+          throw new Error("Campaign does not exist.");
+        }
+        const campaignData = campaignDoc.data() || {};
+        if (campaignData.creatorId !== userId) {
+          throw new Error("Only the campaign leader can approve candidates.");
+        }
+
+        const candidateDoc = await transaction.get(candidateDocRef);
+        if (!candidateDoc.exists) {
+          throw new Error("Candidate does not exist.");
+        }
+
+        transaction.update(candidateDocRef, {
+          status: "active",
+          pendingUntil: null
+        });
+      });
 
       return res.json({ success: true });
     } catch (err: any) {
@@ -1088,7 +1223,16 @@ async function updateUserDailyCandle(db: any, userId: string, valueChange: numbe
       });
     }
     
-    t.update(profileRef, { totalValue: currentTotalValue });
+    if (profileSnap.exists) {
+      t.update(profileRef, { totalValue: currentTotalValue });
+    } else {
+      t.set(profileRef, {
+        uid: userId,
+        displayName: "Sovereign Claimant",
+        totalValue: currentTotalValue,
+        createdAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
   });
 }
 

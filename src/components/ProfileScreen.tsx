@@ -30,6 +30,8 @@ interface ProfileScreenProps {
   onBack?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
   onOpenNotifications?: () => void;
+  userProfiles?: any[];
+  onViewProfile?: (user: { uid: string; displayName: string | null; photoURL?: string | null }) => void;
 }
 
 interface UserContestStats {
@@ -50,7 +52,19 @@ const PRESET_CREST_AVATARS = [
   { id: "valkyrie", title: "Gold Valkyrie", url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=110&q=80" }
 ];
 
-export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampaign, onProfileUpdate, isOwnProfile = true, onBack, onEditingChange, onOpenNotifications }: ProfileScreenProps) {
+export default function ProfileScreen({
+  user,
+  campaigns,
+  onLogout,
+  onEnterCampaign,
+  onProfileUpdate,
+  isOwnProfile = true,
+  onBack,
+  onEditingChange,
+  onOpenNotifications,
+  userProfiles = [],
+  onViewProfile
+}: ProfileScreenProps) {
   const [foundedCount, setFoundedCount] = useState(0);
   const [contestedCampaigns, setContestedCampaigns] = useState<UserContestStats[]>([]);
   const [recentCampaigns, setRecentCampaigns] = useState<Campaign[]>([]);
@@ -59,6 +73,83 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
   const [isLoading, setIsLoading] = useState(true);
   const [showAllCampaignsModal, setShowAllCampaignsModal] = useState(false);
   const isGuest = user.uid.startsWith("local_");
+
+  const [isFollowHovered, setIsFollowHovered] = useState(false);
+  const [showFollowModal, setShowFollowModal] = useState<"followers" | "following" | null>(null);
+  const [followList, setFollowList] = useState<any[]>([]);
+  const [isFollowListLoading, setIsFollowListLoading] = useState(false);
+
+  // Load followers/following list
+  useEffect(() => {
+    if (!showFollowModal || !user.uid) return;
+
+    async function fetchFollowList() {
+      setIsFollowListLoading(true);
+      try {
+        const followsRef = collection(db, "follows");
+        let q;
+        if (showFollowModal === "followers") {
+          q = query(followsRef, where("followingId", "==", user.uid), where("status", "==", "accepted"));
+        } else {
+          q = query(followsRef, where("followerId", "==", user.uid), where("status", "==", "accepted"));
+        }
+
+        const snap = await getDocs(q);
+        const list: any[] = [];
+
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          const targetId = showFollowModal === "followers" ? d.followerId : d.followingId;
+          const matchedProfile = userProfiles.find((p) => p.uid === targetId);
+          list.push({
+            id: docSnap.id,
+            userId: targetId,
+            displayName: matchedProfile?.displayName || "Sovereign Claimant",
+            photoURL: matchedProfile?.photoURL || null,
+            bio: matchedProfile?.bio || ""
+          });
+        });
+
+        setFollowList(list);
+      } catch (err) {
+        console.error("Error fetching follow list:", err);
+      } finally {
+        setIsFollowListLoading(false);
+      }
+    }
+
+    fetchFollowList();
+  }, [showFollowModal, user.uid, userProfiles]);
+
+  const handleUnfollowFromList = async (targetUserId: string) => {
+    if (!auth.currentUser) return;
+    try {
+      const followId = `${auth.currentUser.uid}_${targetUserId}`;
+      await deleteDoc(doc(db, "follows", followId));
+
+      setFollowList((prev) => prev.filter((item) => item.userId !== targetUserId));
+      setFollowingCount((prev) => Math.max(0, prev - 1));
+
+      if (user.uid === targetUserId) {
+        setFollowStatus(null);
+      }
+    } catch (err) {
+      console.error("Error unfollowing from list:", err);
+    }
+  };
+
+  const handleRemoveFollower = async (followerUserId: string) => {
+    if (!auth.currentUser) return;
+    try {
+      const followId = `${followerUserId}_${auth.currentUser.uid}`;
+      await deleteDoc(doc(db, "follows", followId));
+
+      setFollowList((prev) => prev.filter((item) => item.userId !== followerUserId));
+      setFollowersCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error("Error removing follower:", err);
+    }
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -581,10 +672,16 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
 
             {/* Follow Stats */}
             <div className="flex items-center gap-3 mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <div className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+              <div 
+                onClick={() => setShowFollowModal("followers")}
+                className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
                 <span className="text-slate-800 dark:text-white">{followersCount}</span> Followers
               </div>
-              <div className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+              <div 
+                onClick={() => setShowFollowModal("following")}
+                className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
                 <span className="text-slate-800 dark:text-white">{followingCount}</span> Following
               </div>
             </div>
@@ -594,15 +691,21 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
             <button
               onClick={handleFollowRequest}
               disabled={isFollowLoading}
+              onMouseEnter={() => setIsFollowHovered(true)}
+              onMouseLeave={() => setIsFollowHovered(false)}
               className={`absolute top-4 right-4 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                 followStatus === "accepted" 
-                  ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-300"
+                  ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
                   : followStatus === "pending"
-                  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
                   : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20"
               }`}
             >
-              {followStatus === "accepted" ? "Following" : followStatus === "pending" ? "Requested" : "Follow"}
+              {followStatus === "accepted" 
+                ? (isFollowHovered ? "Unfollow" : "Following") 
+                : followStatus === "pending" 
+                ? (isFollowHovered ? "Cancel Req" : "Requested") 
+                : "Follow"}
             </button>
           )}
         </div>
@@ -1602,6 +1705,111 @@ export default function ProfileScreen({ user, campaigns, onLogout, onEnterCampai
               userId={user.uid}
               userDomains={contestedCampaigns}
             />
+          )}
+
+          {/* FOLLOW LIST MODAL */}
+          {showFollowModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#030406]/85 backdrop-blur-md select-none text-left animate-fade-in font-mono">
+              <div className="bg-[#07080b] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl max-w-md w-full relative flex flex-col max-h-[80vh]">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500 rounded-t-3xl" />
+                
+                <div className="flex items-center justify-between pb-3 border-b border-slate-900 mt-1 shrink-0">
+                  <div className="space-y-0.5">
+                    <h3 className="font-display font-black text-white text-xs sm:text-sm tracking-widest uppercase flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-amber-500" />
+                      {showFollowModal === "followers" ? "Followers" : "Following"}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono uppercase font-bold">
+                      {showFollowModal === "followers" ? "Claimants aligned with you" : "Claimants you are watching"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowFollowModal(null)}
+                    className="text-slate-400 hover:text-white font-mono text-[10px] uppercase tracking-wider cursor-pointer border border-slate-800 hover:border-slate-700 bg-slate-950 px-2.5 py-1 rounded-xl transition-all"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-1 py-4 scrollbar-thin">
+                  {isFollowListLoading ? (
+                    <div className="text-center py-8 text-xs text-slate-400 font-mono">
+                      Loading aligned nodes...
+                    </div>
+                  ) : followList.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-500 font-mono">
+                      No claimants logged in this category.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {followList.map((item) => {
+                        const isMe = auth.currentUser?.uid === item.userId;
+                        return (
+                          <div
+                            key={item.userId}
+                            className="p-3 bg-[#0d0f14]/55 border border-slate-900 rounded-2xl flex items-center justify-between gap-3 hover:border-slate-800 transition-colors"
+                          >
+                            <div
+                              onClick={() => {
+                                if (onViewProfile) {
+                                  onViewProfile({
+                                    uid: item.userId,
+                                    displayName: item.displayName,
+                                    photoURL: item.photoURL,
+                                  });
+                                  setShowFollowModal(null);
+                                }
+                              }}
+                              className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
+                            >
+                              {item.photoURL ? (
+                                <img
+                                  src={item.photoURL}
+                                  alt={item.displayName}
+                                  referrerPolicy="no-referrer"
+                                  className="w-8 h-8 rounded-full border border-slate-700 shrink-0 object-cover"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full border border-slate-700 shrink-0 bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                                  {item.displayName ? item.displayName[0].toUpperCase() : "?"}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-bold text-slate-200 truncate">{item.displayName}</h4>
+                                {item.bio && <p className="text-[10px] text-slate-400 truncate mt-0.5">{item.bio}</p>}
+                              </div>
+                            </div>
+
+                            {!isMe && auth.currentUser && (
+                              <div className="shrink-0">
+                                {showFollowModal === "following" ? (
+                                  <button
+                                    onClick={() => handleUnfollowFromList(item.userId)}
+                                    className="px-2.5 py-1 bg-rose-950/40 hover:bg-rose-900/30 text-rose-400 border border-rose-900/50 rounded-xl text-[9px] font-bold font-mono uppercase tracking-wider transition-colors cursor-pointer"
+                                  >
+                                    Unfollow
+                                  </button>
+                                ) : (
+                                  auth.currentUser.uid === user.uid && (
+                                    <button
+                                      onClick={() => handleRemoveFollower(item.userId)}
+                                      className="px-2.5 py-1 bg-rose-950/40 hover:bg-rose-900/30 text-rose-400 border border-rose-900/50 rounded-xl text-[9px] font-bold font-mono uppercase tracking-wider transition-colors cursor-pointer"
+                                    >
+                                      Remove
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </>, document.body
       )}

@@ -23,12 +23,13 @@ interface PostCardProps {
   post: Post;
   currentUser: any;
   onViewProfile?: (user: { uid: string; displayName: string | null; photoURL?: string | null }) => void;
+  onViewCampaign?: (campaignId: string) => void;
   onDelete?: (postId: string) => void;
   isClickable?: boolean;
   onClick?: () => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, onDelete, isClickable, onClick }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, onViewCampaign, onDelete, isClickable, onClick }) => {
   const [isLiking, setIsLiking] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
@@ -143,30 +144,50 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, o
     >
       {/* Post Header */}
       <div className="flex items-center justify-between p-3 relative">
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onViewProfile) onViewProfile({ uid: post.userId, displayName: post.userDisplayName, photoURL: post.userPhotoURL });
-          }}
-          className="flex items-center gap-3 cursor-pointer group"
-        >
-          <img 
-            src={post.userPhotoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} 
-            alt={post.userDisplayName}
-            className="w-9 h-9 rounded-full object-cover ring-2 ring-transparent group-hover:ring-amber-500 transition-all"
-            onError={(e) => { e.currentTarget.src = "https://ui-avatars.com/api/?name=User&background=random"; }}
-          />
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onViewProfile) onViewProfile({ uid: post.userId, displayName: post.userDisplayName, photoURL: post.userPhotoURL });
+            }}
+            className="flex shrink-0 items-center cursor-pointer group"
+          >
+            <img 
+              src={post.userPhotoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} 
+              alt={post.userDisplayName}
+              className="w-9 h-9 rounded-full object-cover ring-2 ring-transparent group-hover:ring-amber-500 transition-all"
+              onError={(e) => { e.currentTarget.src = "https://ui-avatars.com/api/?name=User&background=random"; }}
+            />
+          </button>
           <div className="flex flex-col items-start text-left">
-            <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-amber-500 transition-colors leading-tight">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onViewProfile) onViewProfile({ uid: post.userId, displayName: post.userDisplayName, photoURL: post.userPhotoURL });
+              }}
+              className="font-bold text-sm text-slate-900 dark:text-slate-100 hover:text-amber-500 transition-colors leading-tight cursor-pointer"
+            >
               {post.userDisplayName}
-            </span>
+            </button>
             {post.campaignTitle && (
-              <span className="text-[10px] text-amber-600/90 dark:text-amber-400/90 font-mono font-normal uppercase tracking-wider leading-none mt-0.5">
-                {post.campaignTitle}
-              </span>
+              onViewCampaign ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (post.campaignId) onViewCampaign(post.campaignId);
+                  }}
+                  className="text-[10px] text-amber-600/90 dark:text-amber-400/90 hover:text-amber-700 hover:underline font-mono font-normal uppercase tracking-wider leading-none mt-0.5 cursor-pointer text-left"
+                >
+                  {post.campaignTitle}
+                </button>
+              ) : (
+                <span className="text-[10px] text-amber-600/90 dark:text-amber-400/90 font-mono font-normal uppercase tracking-wider leading-none mt-0.5 text-left">
+                  {post.campaignTitle}
+                </span>
+              )
             )}
           </div>
-        </button>
+        </div>
         
         {currentUser?.uid === post.userId && (
           <div className="relative">

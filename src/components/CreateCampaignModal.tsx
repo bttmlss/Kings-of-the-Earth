@@ -40,6 +40,7 @@ export default function CreateCampaignModal({
   const [isValidated, setIsValidated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [domainType, setDomainType] = useState<string | null>(null);
+  const [pendingTime, setPendingTime] = useState<"none" | "24hours" | "72hours" | "upon_approval">("24hours");
 
   const [exampleIndex, setExampleIndex] = useState(0);
 
@@ -130,7 +131,8 @@ export default function CreateCampaignModal({
           domainTitle: title,
           domainType,
           slug,
-          prefix
+          prefix,
+          pendingTime
         })
       });
 
@@ -147,6 +149,7 @@ export default function CreateCampaignModal({
         createdAt: new Date(), // Local fallback
         status: "live",
         domainType: (domainType as any) || "Miscellaneous",
+        pendingTime: pendingTime,
       };
 
       onSuccess(newCampaign);
@@ -267,6 +270,28 @@ export default function CreateCampaignModal({
             </div>
             <p className="text-[11px] text-slate-400 italic">
               Example: <span className="font-semibold text-slate-600">{prefix} {domainPayload || currentExample.text}</span>
+            </p>
+          </div>
+
+          {/* Pending Validation Time selection */}
+          <div className="space-y-2 col-span-2">
+            <label htmlFor="pendingTimeSetting" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest">
+              Pending Validation Period
+            </label>
+            <select
+              id="pendingTimeSetting"
+              value={pendingTime}
+              onChange={(e) => setPendingTime(e.target.value as any)}
+              disabled={isLoading}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-semibold text-slate-800"
+            >
+              <option value="none">None (Instant Access)</option>
+              <option value="24hours">24 Hours Pending Period</option>
+              <option value="72hours">72 Hours Pending Period</option>
+              <option value="upon_approval">Leader Manual Approval Only</option>
+            </select>
+            <p className="text-[10px] text-slate-400 font-mono">
+              Controls the escrow period before a newly joined contestant can be voted on.
             </p>
           </div>
 

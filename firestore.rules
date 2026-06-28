@@ -143,7 +143,12 @@ service cloud.firestore {
 
     match /posts/{postId} {
       allow read: if true;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likesCount', 'comments'])
+      );
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     match /follows/{followId} {
