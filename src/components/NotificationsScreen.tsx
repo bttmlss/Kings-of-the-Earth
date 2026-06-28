@@ -12,7 +12,7 @@ interface NotificationsScreenProps {
 interface AppNotification {
   id: string;
   userId: string;
-  type: "follow" | "percentile";
+  type: "follow" | "percentile" | "campaign_join";
   title: string;
   body: string;
   read: boolean;
@@ -21,6 +21,8 @@ interface AppNotification {
   sourceUserPhoto?: string;
   sourceUserName?: string;
   leaderboardId?: string;
+  campaignId?: string;
+  needsApproval?: boolean;
 }
 
 export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
@@ -52,6 +54,31 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
 
     return () => unsubscribe();
   }, [currentUser.uid]);
+
+  const handleAcceptRequest = async (e: React.MouseEvent, n: AppNotification) => {
+    e.stopPropagation();
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch("/api/accept-campaign-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: n.campaignId,
+          candidateId: n.sourceUserId,
+          notificationId: n.id
+        })
+      });
+      if (!res.ok) {
+        throw new Error("Failed to accept request");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to accept request.");
+    }
+  };
 
   const markAsRead = async (id: string) => {
     try {
@@ -101,7 +128,7 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
               }`}
             >
               <div className="flex items-start gap-4">
-                {n.type === "follow" ? (
+                {n.type === "follow" || n.type === "campaign_join" ? (
                   n.sourceUserPhoto ? (
                     <img src={n.sourceUserPhoto || undefined} alt="User" className="w-10 h-10 rounded-full object-cover shrink-0 ring-2 ring-slate-100 dark:ring-slate-800" />
                   ) : (
@@ -126,6 +153,18 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug">
                     {n.body}
                   </p>
+                  
+                  {n.needsApproval && (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={(e) => handleAcceptRequest(e, n)}
+                        className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
+                      >
+                        Accept Request
+                      </button>
+                    </div>
+                  )}
+
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 font-mono uppercase tracking-wider">
                     {n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString() : 'Just now'}
                   </p>

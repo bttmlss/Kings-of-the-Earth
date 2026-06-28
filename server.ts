@@ -177,8 +177,10 @@ Return a JSON object with:
     };
     validationCache.set(cacheKey, { result: finalRes, expiry: Date.now() + 1000 * 60 * 60 * 24 });
     return finalRes;
-  } catch (err) {
-    console.error("Error in validateNameAndBioWithGemini:", err);
+  } catch (err: any) {
+    if (err?.status !== 'RESOURCE_EXHAUSTED' && !err?.message?.includes('429')) {
+      console.error("Error in validateNameAndBioWithGemini:", err);
+    }
     // Fallback check
     const lowercaseName = (displayName || "").toLowerCase();
     const localBlockedTitles = [
@@ -817,12 +819,83 @@ async function startServer() {
           status: status,
           pendingUntil: pendingUntil,
         });
+
+        // Add a notification to the campaign leader
+        const notificationRef = db.collection('notifications').doc();
+        transaction.set(notificationRef, {
+          userId: campaignData.creatorId,
+          type: "campaign_join",
+          title: "New Court Claimant",
+          body: `${finalDisplayName} has requested to join ${campaignData.domainTitle || 'your campaign'}.`,
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+          sourceUserId: userId,
+          sourceUserName: finalDisplayName,
+          sourceUserPhoto: finalPhotoURL,
+          campaignId: campaignId,
+          needsApproval: status === "pending" && pendingTime === "upon_approval"
+        });
       });
 
       console.log(`[AUDIT] User ${userId} joined campaign ${campaignId}`);
       
       updateUserDailyCandle(db, userId, 2).catch(e => console.error(e));
 
+      return res.json({ success: true });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // API Route - accept-campaign-request
+  app.post("/api/accept-campaign-request", async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split("Bearer ")[1];
+      const decodedToken = await getAuth().verifyIdToken(token);
+      const userId = decodedToken.uid;
+
+      const { campaignId, candidateId, notificationId } = req.body;
+      if (!campaignId || !candidateId || !notificationId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const db = getFirestore();
+      
+      const campaignDocRef = db.doc(`campaigns/${campaignId}`);
+      const candidateDocRef = db.doc(`campaigns/${campaignId}/candidates/${candidateId}`);
+      const notificationDocRef = db.doc(`notifications/${notificationId}`);
+
+      await db.runTransaction(async (transaction) => {
+        const campaignDoc = await transaction.get(campaignDocRef);
+        if (!campaignDoc.exists) {
+          throw new Error("Campaign does not exist.");
+        }
+        
+        const campaignData = campaignDoc.data() || {};
+        if (campaignData.creatorId !== userId) {
+          throw new Error("Only the campaign leader can approve requests.");
+        }
+
+        const candidateDoc = await transaction.get(candidateDocRef);
+        if (candidateDoc.exists) {
+          transaction.update(candidateDocRef, {
+            status: "active",
+            pendingUntil: null
+          });
+        }
+        
+        // Mark the notification as no longer needing approval, and read
+        transaction.update(notificationDocRef, {
+          needsApproval: false,
+          read: true
+        });
+      });
+
+      console.log(`[AUDIT] User ${userId} accepted ${candidateId} into campaign ${campaignId}`);
       return res.json({ success: true });
     } catch (err: any) {
       next(err);
@@ -1025,19 +1098,24 @@ async function startServer() {
       const decodedToken = await getAuth().verifyIdToken(token);
       const userId = decodedToken.uid;
 
-      const { displayName, photoURL, bio } = req.body;
+      const { displayName, photoURL, bio, legalName, showLegalName } = req.body;
       let trimmedName = (displayName || "").trim();
+      let trimmedLegalName = (legalName || "").trim();
 
       if (!trimmedName || trimmedName.length > 50) {
         return res.status(400).json({ error: "Profile name cannot be empty or exceed 50 characters." });
+      }
+
+      if (trimmedLegalName.length > 100) {
+        return res.status(400).json({ error: "Legal name cannot exceed 100 characters." });
       }
 
       if (bio && bio.length > 1000) {
         return res.status(400).json({ error: "Bio cannot exceed 1000 characters." });
       }
 
-      if (photoURL && photoURL.length > 1000) {
-        return res.status(400).json({ error: "Photo URL cannot exceed 1000 characters." });
+      if (photoURL && photoURL.length > 500000) {
+        return res.status(400).json({ error: "Photo URL is too large (max ~500KB)." });
       }
 
       // Check invisible chars/unicode lookalikes
@@ -1067,18 +1145,66 @@ async function startServer() {
 
       const userProfileRef = db.doc(`user_profiles/${userId}`);
       
-      const batch = db.batch();
-      batch.set(userProfileRef, {
+      const bulkWriter = db.bulkWriter();
+      bulkWriter.set(userProfileRef, {
         userId: userId,
         bio: bio?.trim() || "",
         displayName: trimmedName,
         displayNameLower: lowerName,
-        photoURL: photoURL?.trim() || null
+        photoURL: photoURL?.trim() || null,
+        legalName: trimmedLegalName,
+        showLegalName: Boolean(showLegalName)
       }, { merge: true });
 
-      await batch.commit();
+      // 1. Sync Campaigns (creatorName)
+      const campaignsSnap = await db.collection("campaigns").where("creatorId", "==", userId).get();
+      campaignsSnap.forEach(doc => {
+        bulkWriter.update(doc.ref, { creatorName: trimmedName });
+      });
 
-      console.log(`[AUDIT] User ${userId} updated profile (displayName: ${trimmedName})`);
+      // 2. Sync Candidates (displayName, photoURL, bio)
+      const candidatesSnap = await db.collectionGroup("candidates").where("userId", "==", userId).get();
+      candidatesSnap.forEach(doc => {
+        bulkWriter.update(doc.ref, { 
+          displayName: trimmedName,
+          photoURL: photoURL?.trim() || null,
+          bio: bio?.trim() || ""
+        });
+      });
+
+      // 3. Sync Title History (holderDisplayName)
+      const historySnap = await db.collectionGroup("titleHistory").where("holderUserId", "==", userId).get();
+      historySnap.forEach(doc => {
+        bulkWriter.update(doc.ref, { holderDisplayName: trimmedName });
+      });
+
+      // 4. Sync Notifications (sourceUserName, sourceUserPhoto, body)
+      const notifsSnap = await db.collection("notifications").where("sourceUserId", "==", userId).get();
+      notifsSnap.forEach(doc => {
+        const data = doc.data();
+        let newBody = data.body;
+        if (data.type === "campaign_join" && typeof newBody === "string") {
+           newBody = newBody.replace(/^.*? has requested to join/, `${trimmedName} has requested to join`);
+        }
+        bulkWriter.update(doc.ref, { 
+          sourceUserName: trimmedName,
+          sourceUserPhoto: photoURL?.trim() || null,
+          ...(newBody !== data.body ? { body: newBody } : {})
+        });
+      });
+
+      // 5. Sync Posts (userDisplayName, userPhotoURL)
+      const postsSnap = await db.collection("posts").where("userId", "==", userId).get();
+      postsSnap.forEach(doc => {
+        bulkWriter.update(doc.ref, {
+          userDisplayName: trimmedName,
+          userPhotoURL: photoURL?.trim() || null
+        });
+      });
+
+      await bulkWriter.close();
+
+      console.log(`[AUDIT] User ${userId} updated profile and synced across platform (displayName: ${trimmedName})`);
 
       return res.json({ success: true });
     } catch (err: any) {

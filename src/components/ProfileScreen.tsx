@@ -43,15 +43,6 @@ interface UserContestStats {
   campaignTitle?: string;
 }
 
-const PRESET_CREST_AVATARS = [
-  { id: "king", title: "Royal Crown", url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80" },
-  { id: "knight", title: "Gilded Knight", url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" },
-  { id: "queen", title: "Emerald Queen", url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80" },
-  { id: "sorcerer", title: "Sage Wizard", url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80" },
-  { id: "unicorn", title: "Silver Pegasus", url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&q=80" },
-  { id: "valkyrie", title: "Gold Valkyrie", url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=110&q=80" }
-];
-
 export default function ProfileScreen({
   user,
   campaigns,
@@ -72,7 +63,6 @@ export default function ProfileScreen({
   const [crownsCount, setCrownsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showAllCampaignsModal, setShowAllCampaignsModal] = useState(false);
-  const isGuest = user.uid.startsWith("local_");
 
   const [isFollowHovered, setIsFollowHovered] = useState(false);
   const [showFollowModal, setShowFollowModal] = useState<"followers" | "following" | null>(null);
@@ -202,7 +192,12 @@ export default function ProfileScreen({
 
   const [bio, setBio] = useState("");
   const [editBio, setEditBio] = useState("");
+  const [legalName, setLegalName] = useState("");
+  const [editLegalName, setEditLegalName] = useState("");
+  const [showLegalName, setShowLegalName] = useState(false);
+  const [editShowLegalName, setEditShowLegalName] = useState(false);
   const [isProfilePrivate, setIsProfilePrivate] = useState(false);
+
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [followStatus, setFollowStatus] = useState<"pending" | "accepted" | null>(null);
@@ -238,15 +233,23 @@ export default function ProfileScreen({
           const pBio = profileData.bio || "";
           setBio(pBio);
           setEditBio(pBio);
+          setLegalName(profileData.legalName || "");
+          setEditLegalName(profileData.legalName || "");
+          setShowLegalName(!!profileData.showLegalName);
+          setEditShowLegalName(!!profileData.showLegalName);
           setIsProfilePrivate(!!profileData.isPrivate);
         } else {
           const localBio = localStorage.getItem(`local_bio_${user.uid}`) || "";
           setBio(localBio);
           setEditBio(localBio);
+          setLegalName("");
+          setEditLegalName("");
+          setShowLegalName(false);
+          setEditShowLegalName(false);
           setIsProfilePrivate(false);
         }
       } catch (err) {
-        console.error("Error loading bio:", err);
+        console.error("Error loading profile details:", err);
         handleFirestoreError(err, OperationType.GET, path);
       }
     }
@@ -382,10 +385,6 @@ export default function ProfileScreen({
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isGuest) {
-      setErrorMessage("Guest accounts cannot edit profiles. Please log in.");
-      return;
-    }
     if (!editName.trim()) {
       setErrorMessage("Sovereign Name cannot be empty.");
       return;
@@ -399,10 +398,11 @@ export default function ProfileScreen({
       const trimmedName = editName.trim();
       const trimmedPhoto = editPhoto.trim();
       const trimmedBio = editBio.trim();
+      const trimmedLegalName = editLegalName.trim();
       
       const token = await auth.currentUser?.getIdToken();
       
-      if (token && !isGuest) {
+      if (token) {
         const res = await fetch("/api/update-profile", {
           method: "POST",
           headers: {
@@ -412,7 +412,9 @@ export default function ProfileScreen({
           body: JSON.stringify({
             displayName: trimmedName,
             photoURL: trimmedPhoto || null,
-            bio: trimmedBio
+            bio: trimmedBio,
+            legalName: trimmedLegalName,
+            showLegalName: editShowLegalName
           })
         });
 
@@ -421,39 +423,31 @@ export default function ProfileScreen({
           throw new Error(data.error || "Failed to update profile via API");
         }
       } else {
-        // Fallback for purely local guest users or local storage
+        // Fallback for local storage
         const userProfileRef = doc(db, "user_profiles", user.uid);
         await setDoc(userProfileRef, {
           userId: user.uid,
           bio: trimmedBio,
           displayName: trimmedName,
-          photoURL: trimmedPhoto || null
+          photoURL: trimmedPhoto || null,
+          legalName: trimmedLegalName,
+          showLegalName: editShowLegalName
         }, { merge: true });
       }
 
       // Save locally to localStorage for immediate offline/guest retrieval
       localStorage.setItem(`local_bio_${user.uid}`, trimmedBio);
 
-      // Update Auth profile if registered, otherwise default local session
-      if (!isGuest) {
-        if (auth.currentUser) {
-          try {
-            await updateProfile(auth.currentUser, {
-              displayName: trimmedName,
-              photoURL: (trimmedPhoto && trimmedPhoto.length > 2048) ? null : (trimmedPhoto || null)
-            });
-          } catch (profileErr) {
-            console.warn("Failed to update Firebase Auth profile (might be too long, but saved to Firestore):", profileErr);
-          }
+      // Update Auth profile if registered
+      if (auth.currentUser) {
+        try {
+          await updateProfile(auth.currentUser, {
+            displayName: trimmedName,
+            photoURL: (trimmedPhoto && trimmedPhoto.length > 2048) ? null : (trimmedPhoto || null)
+          });
+        } catch (profileErr) {
+          console.warn("Failed to update Firebase Auth profile (might be too long, but saved to Firestore):", profileErr);
         }
-      } else {
-        const localSession = {
-          uid: user.uid,
-          displayName: trimmedName,
-          email: user.email,
-          photoURL: trimmedPhoto || null
-        };
-        localStorage.setItem("local_sovereign_session", JSON.stringify(localSession));
       }
       
       // 3. Notify parent app state
@@ -465,8 +459,10 @@ export default function ProfileScreen({
       }
 
       setBio(trimmedBio);
+      setLegalName(trimmedLegalName);
+      setShowLegalName(editShowLegalName);
       
-      setSaveMessage("Your Proclamation & Crest were successfully sealed!");
+      setSaveMessage("Your profile was successfully sealed!");
       setTimeout(() => {
         handleSetEditing(false);
         setSaveMessage(null);
@@ -642,15 +638,11 @@ export default function ProfileScreen({
               <h2 className="font-display font-black text-base text-slate-950 dark:text-white tracking-tight">
                 {user.displayName || "Sovereign Lord"}
               </h2>
-              {isGuest && (
-                <span className="px-1.5 py-0.5 bg-slate-200/80 dark:bg-slate-700 text-slate-500 font-bold text-[7px] rounded-md tracking-wider uppercase leading-none">
-                  GUEST
-                </span>
-              )}
             </div>
-            {isGuest && (
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-none">
-                Temporary ledger account
+            
+            {showLegalName && legalName && (
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                {legalName}
               </p>
             )}
 
@@ -716,13 +708,11 @@ export default function ProfileScreen({
         <div className="flex gap-2 w-full max-w-sm sm:max-w-md">
           <button
             onClick={() => {
-              if (isGuest) {
-                setErrorMessage("Guest accounts cannot edit profiles. Please log in.");
-                return;
-              }
               setEditName(user.displayName || "");
               setEditPhoto(user.photoURL || "");
               setEditBio(bio);
+              setEditLegalName(legalName);
+              setEditShowLegalName(showLegalName);
               handleSetEditing(true);
             }}
             className="flex-1 py-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-500 font-extrabold text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
@@ -749,7 +739,7 @@ export default function ProfileScreen({
         const joinedRecentCampaigns = recentCampaigns.filter(rc =>
           contestedCampaigns.some(s => s.campaignId === rc.id)
         );
-        const activeCampaignList = (isOwnProfile && !isGuest && joinedRecentCampaigns.length > 0)
+        const activeCampaignList = (isOwnProfile && joinedRecentCampaigns.length > 0)
           ? joinedRecentCampaigns
           : contestedCampaigns.map(s => campaigns.find(c => c.id === s.campaignId)).filter(Boolean) as Campaign[];
 
@@ -1006,46 +996,31 @@ export default function ProfileScreen({
                       className="w-full px-3 py-2 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-amber-400/5 transition-all font-medium text-slate-800 dark:text-slate-100 resize-none"
                     />
                   </div>
-                </div>
-              </div>
 
-              {/* Preset Royal Crests Grid Selection */}
-              <div className="space-y-2.5 pt-1 border-t border-slate-200 dark:border-slate-700/80 text-left">
-                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                  Or Choose a Preset Royal Crest
-                </span>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                  {PRESET_CREST_AVATARS.map((avatar) => {
-                    const isSelected = editPhoto === avatar.url;
-                    return (
-                      <button
-                        key={avatar.id}
-                        type="button"
-                        onClick={() => setEditPhoto(avatar.url)}
-                        className={`p-1.5 rounded-xl bg-slate-300/60 dark:bg-slate-800/60 border border-slate-400/40 dark:border-slate-600/40 flex flex-col items-center gap-1 transition-all cursor-pointer relative ${
-                          isSelected
-                            ? "border-amber-500 bg-amber-500/5 ring-4 ring-amber-500/10 scale-[1.03]"
-                            : "border-slate-300/40 hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900"
-                        }`}
-                      >
-                        <img
-                          src={avatar.url}
-                          alt={avatar.title}
-                          referrerPolicy="no-referrer"
-                          className="w-7 h-7 rounded-lg object-cover shrink-0"
-                          onError={(e) => { e.currentTarget.style.display = "none"; }}
-                        />
-                        <span className="text-[7px] font-bold text-slate-500 text-center leading-none tracking-tight">
-                          {avatar.title}
-                        </span>
-                        {isSelected && (
-                          <div className="absolute top-0.5 right-0.5 w-3 h-3 bg-emerald-500 text-white rounded-full flex items-center justify-center border border-white">
-                            <Check className="w-1.5 h-1.5 stroke-[3.5]" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                  <div className="space-y-1">
+                    <label className="block text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">
+                      Legal Name
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={100}
+                      placeholder="Your given legal name"
+                      value={editLegalName}
+                      onChange={(e) => setEditLegalName(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-amber-400/5 transition-all font-medium text-slate-800 dark:text-slate-100"
+                    />
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editShowLegalName}
+                        onChange={(e) => setEditShowLegalName(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-200/60 dark:bg-slate-900/40"
+                      />
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Display on Profile
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -1404,7 +1379,7 @@ export default function ProfileScreen({
                 const joinedRecentCampaigns = recentCampaigns.filter(rc =>
                   contestedCampaigns.some(s => s.campaignId === rc.id)
                 );
-                const activeCampaignList = (isOwnProfile && !isGuest && joinedRecentCampaigns.length > 0)
+                const activeCampaignList = (isOwnProfile && joinedRecentCampaigns.length > 0)
                   ? joinedRecentCampaigns
                   : contestedCampaigns.map(s => campaigns.find(c => c.id === s.campaignId)).filter(Boolean) as Campaign[];
 

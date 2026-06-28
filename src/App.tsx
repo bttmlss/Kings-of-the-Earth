@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, signOut, User, linkWithPhoneNumber, RecaptchaVerifier, ConfirmationResult } from "firebase/auth";
 import { collection, query, onSnapshot, where, orderBy, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "./firebase";
 import { Campaign } from "./types";
@@ -19,7 +19,7 @@ import LeaderboardScreen from "./components/LeaderboardScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import HomeFeed from "./components/HomeFeed";
 import { NotificationsScreen } from "./components/NotificationsScreen";
-import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw } from "lucide-react";
+import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PullToRefresh from "./components/PullToRefresh";
 import { useGlobalInvertedScroll } from "./hooks/useGlobalInvertedScroll";
@@ -117,11 +117,6 @@ export default function App() {
   }, [user?.uid, user?.displayName, user?.photoURL]);
 
   const handleTogglePrivacy = async () => {
-    if (isGuest) {
-      setFeedback("Guest accounts cannot modify privacy settings.");
-      setTimeout(() => setFeedback(null), 3000);
-      return;
-    }
     if (!user?.uid) return;
     const newPrivate = !isProfilePrivate;
     setIsProfilePrivate(newPrivate);
@@ -149,6 +144,131 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [isProfileEditing, setIsProfileEditing] = useState(false);
+
+  // Phone linking state
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [isLinkingPhone, setIsLinkingPhone] = useState(false);
+  const [phoneLinkError, setPhoneLinkError] = useState<string | null>(null);
+  const [phoneLinkSuccess, setPhoneLinkSuccess] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      if ((window as any).recaptchaVerifier) {
+        try {
+          (window as any).recaptchaVerifier.clear();
+        } catch (e) {}
+        (window as any).recaptchaVerifier = undefined;
+      }
+      try {
+        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container-settings', {
+          'size': 'invisible',
+          'callback': (response: any) => {
+            // reCAPTCHA solved
+          }
+        });
+      } catch (e) {
+        console.warn("Failed to initialize recaptcha", e);
+      }
+    } else {
+      if ((window as any).recaptchaVerifier) {
+        try {
+          (window as any).recaptchaVerifier.clear();
+        } catch (e) {}
+        (window as any).recaptchaVerifier = undefined;
+      }
+    }
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    let timer: any;
+    if (confirmationResult && timeLeft !== null && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (confirmationResult && timeLeft === 0) {
+      setConfirmationResult(null);
+      setVerificationCode("");
+      setTimeLeft(null);
+      setPhoneLinkError("Verification code expired. Please request a new one.");
+    }
+    return () => clearInterval(timer);
+  }, [confirmationResult, timeLeft]);
+
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    let formattedPhone = phoneNumber.trim().replace(/[^\d+]/g, '');
+    if (!formattedPhone.startsWith('+')) {
+      if (formattedPhone.length === 10) {
+        formattedPhone = '+1' + formattedPhone;
+      } else {
+        formattedPhone = '+' + formattedPhone;
+      }
+    }
+
+    if (!/^\+\d{10,15}$/.test(formattedPhone)) {
+      setPhoneLinkError("Please enter a valid phone number including country code (e.g. +1234567890).");
+      return;
+    }
+
+    setIsLinkingPhone(true);
+    setPhoneLinkError(null);
+    setPhoneLinkSuccess(null);
+    try {
+      const appVerifier = (window as any).recaptchaVerifier;
+      if (!auth.currentUser) throw new Error("Must be logged in.");
+      const confirmation = await linkWithPhoneNumber(auth.currentUser, formattedPhone, appVerifier);
+      setConfirmationResult(confirmation);
+      setTimeLeft(600); // 10 minutes
+      setPhoneLinkSuccess("Code sent!");
+    } catch (err: any) {
+      console.error("Phone Link Error Detail:", err);
+      if (err.code === "auth/invalid-phone-number") {
+         setPhoneLinkError("Invalid phone number format. Please ensure it includes the country code (e.g. +1).");
+      } else if (err.code === "auth/operation-not-allowed") {
+         setPhoneLinkError("Phone authentication is not fully enabled in Firebase, or the SMS region is not allowed. Please configure this in the Firebase Console (Auth -> Settings -> SMS Region Policy).");
+      } else {
+         setPhoneLinkError(err.message || "Failed to send verification code.");
+      }
+      if ((window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.render().then((widgetId: any) => {
+          if (typeof window !== "undefined" && (window as any).grecaptcha) {
+            (window as any).grecaptcha.reset(widgetId);
+          }
+        });
+      }
+    } finally {
+      setIsLinkingPhone(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationCode.trim() || !confirmationResult) {
+      setPhoneLinkError("Please enter the verification code.");
+      return;
+    }
+
+    setIsLinkingPhone(true);
+    setPhoneLinkError(null);
+    try {
+      await confirmationResult.confirm(verificationCode);
+      setPhoneLinkSuccess("Phone number successfully linked!");
+      setConfirmationResult(null);
+      setTimeLeft(null);
+      setPhoneNumber("");
+      setVerificationCode("");
+    } catch (err: any) {
+      console.error("Code Verification Error:", err);
+      setPhoneLinkError("Invalid verification code. Please try again.");
+    } finally {
+      setIsLinkingPhone(false);
+    }
+  };
+
   const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | any>(() => {
     return (localStorage.getItem("sovereign_theme") as "light" | "dark") || "light";
@@ -166,24 +286,8 @@ export default function App() {
   // Stream Auth status
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-      if (authUser) {
-        setUser(authUser);
-        setAuthLoading(false);
-      } else {
-        // Fallback to local session if any
-        try {
-          const rawLocalSession = localStorage.getItem("local_sovereign_session");
-          if (rawLocalSession) {
-            setUser(JSON.parse(rawLocalSession));
-          } else {
-            setUser(null);
-          }
-        } catch (e) {
-          console.error("Local session retrieve fail:", e);
-          setUser(null);
-        }
-        setAuthLoading(false);
-      }
+      setUser(authUser);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -271,12 +375,9 @@ export default function App() {
   }, [currentTab, selectedCampaign]);
 
 
-  const isGuest = user?.uid?.startsWith("local_");
-
   const handleLogout = async () => {
     try {
       setIsSettingsOpen(false);
-      localStorage.removeItem("local_sovereign_session");
       await signOut(auth);
       setUser(null);
       setSelectedCampaign(null);
@@ -393,11 +494,6 @@ export default function App() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              if (isGuest) {
-                setFeedback("Guest accounts cannot create campaigns. Please log in.");
-                setTimeout(() => setFeedback(null), 3000);
-                return;
-              }
               setIsCreateModalOpen(true);
             }}
             className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[10px] sm:text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
@@ -819,11 +915,6 @@ export default function App() {
           <button
             onClick={() => {
               if (isAnyModalOpen) return;
-              if (isGuest) {
-                setFeedback("Guest accounts cannot publish decrees. Please log in.");
-                setTimeout(() => setFeedback(null), 3000);
-                return;
-              }
               setIsCreatePostModalOpen(true);
             }}
             className="flex flex-col items-center justify-center -mt-2 transition-all cursor-pointer text-slate-400 hover:text-amber-500 hover:scale-110 active:scale-95 w-full"
@@ -1076,6 +1167,82 @@ export default function App() {
                           </button>
                         </div>
                       </div>
+
+                      <hr className="border-slate-300 dark:border-slate-700 my-1.5" />
+
+                      {/* Phone Linking Section */}
+                      {(!auth.currentUser?.phoneNumber && !auth.currentUser?.providerData.some(p => p.providerId === 'phone')) ? (
+                        <div className="space-y-2.5 text-left">
+                          <span className="block text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                            Secure Account with Phone Number
+                          </span>
+                          
+                          {!confirmationResult ? (
+                            <div className="flex gap-2">
+                              <input
+                                type="tel"
+                                placeholder="+1234567890"
+                                value={phoneNumber}
+                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                disabled={isLinkingPhone}
+                                className="flex-1 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSendCode}
+                                disabled={isLinkingPhone || !phoneNumber.trim()}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                              >
+                                {isLinkingPhone ? "Sending..." : "Send Code"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Verification Code"
+                                  value={verificationCode}
+                                  onChange={(e) => setVerificationCode(e.target.value)}
+                                  disabled={isLinkingPhone}
+                                  className="flex-1 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleVerifyCode}
+                                  disabled={isLinkingPhone || !verificationCode.trim()}
+                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                                >
+                                  {isLinkingPhone ? "Verifying..." : "Verify Code"}
+                                </button>
+                              </div>
+                              {timeLeft !== null && (
+                                <span className="text-[10px] font-bold text-slate-400 font-mono">
+                                  Expires in: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {(phoneLinkError || phoneLinkSuccess) && (
+                            <p className={`text-[10px] font-bold ${phoneLinkError ? "text-rose-500" : "text-emerald-500"}`}>
+                              {phoneLinkError || phoneLinkSuccess}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 text-left">
+                          <span className="block text-[9px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" /> Phone Number Linked
+                          </span>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide mt-0.5">
+                            {auth.currentUser?.phoneNumber || "A phone number is secured to this account."}
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Recaptcha Container for Settings */}
+                      <div id="recaptcha-container-settings"></div>
                     </div>
                   </div>
 

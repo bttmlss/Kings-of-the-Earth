@@ -1,17 +1,67 @@
-import React, { useState } from "react";
-import { signInWithPopup, signInAnonymously, updateProfile } from "firebase/auth";
+import React, { useState, useEffect } from "react";
+import { signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
-import { Crown, Sparkles, ShieldCheck, User } from "lucide-react";
+import { Crown, Sparkles, ShieldCheck, Phone, CheckCircle2 } from "lucide-react";
 import { motion } from "motion/react";
+
+declare global {
+  interface Window {
+    recaptchaVerifier: any;
+  }
+}
 
 interface LoginScreenProps {
   onLoginSuccess?: (user: any) => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  const [guestName, setGuestName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Ensure we always have a fresh verifier bound to the current DOM node
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (e) {}
+      window.recaptchaVerifier = undefined;
+    }
+
+    window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      'size': 'invisible',
+      'callback': (response: any) => {
+        // reCAPTCHA solved
+      }
+    });
+
+    return () => {
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (e) {}
+        window.recaptchaVerifier = undefined;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let timer: any;
+    if (confirmationResult && timeLeft !== null && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (confirmationResult && timeLeft === 0) {
+      setConfirmationResult(null);
+      setVerificationCode("");
+      setTimeLeft(null);
+      setError("Verification code expired. Please request a new one.");
+    }
+    return () => clearInterval(timer);
+  }, [confirmationResult, timeLeft]);
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -23,56 +73,75 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       }
     } catch (err: any) {
       console.error("Google Sign-In Error. Falling back or displaying: ", err);
-      setError(err.message || "Unable to open Google Login Pop-up (it could be blocked by browser iframe settings). Please use the Instant Guest Pass below!");
+      setError(err.message || "Unable to open Google Login Pop-up (it could be blocked by browser iframe settings).");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGuestLogin = async (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guestName.trim()) {
-      setError("Please enter a name for your guest pass.");
-      return;
+    
+    let formattedPhone = phoneNumber.trim().replace(/[^\d+]/g, '');
+    if (!formattedPhone.startsWith('+')) {
+      if (formattedPhone.length === 10) {
+        formattedPhone = '+1' + formattedPhone;
+      } else {
+        formattedPhone = '+' + formattedPhone;
+      }
     }
-    if (guestName.trim().length < 2) {
-      setError("Name must be at least 2 characters.");
-      return;
-    }
-    if (guestName.trim().length > 25) {
-      setError("Name must be under 25 characters.");
+
+    if (!/^\+\d{10,15}$/.test(formattedPhone)) {
+      setError("Please enter a valid phone number including country code (e.g. +1234567890).");
       return;
     }
 
     setIsLoading(true);
     setError(null);
     try {
-      const userCredential = await signInAnonymously(auth);
-      await updateProfile(userCredential.user, {
-        displayName: guestName.trim(),
-      });
+      const appVerifier = window.recaptchaVerifier;
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      setConfirmationResult(confirmation);
+      setTimeLeft(600); // 10 minutes
+    } catch (err: any) {
+      console.error("Phone Auth Error Detail:", err);
+      if (err.code === "auth/invalid-phone-number") {
+         setError("Invalid phone number format. Please ensure it includes the country code (e.g. +1).");
+      } else if (err.code === "auth/operation-not-allowed") {
+         setError("Phone authentication is not fully enabled in Firebase, or the SMS region is not allowed. Please configure this in the Firebase Console (Auth -> Settings -> SMS Region Policy).");
+      } else {
+         setError(err.message || "Failed to send verification code.");
+      }
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.render().then((widgetId: any) => {
+          if (typeof window !== "undefined" && (window as any).grecaptcha) {
+            (window as any).grecaptcha.reset(widgetId);
+          }
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationCode.trim() || !confirmationResult) {
+      setError("Please enter the verification code.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await confirmationResult.confirm(verificationCode);
+      setTimeLeft(null);
       if (onLoginSuccess) {
-        onLoginSuccess(userCredential.user);
+        onLoginSuccess(result.user);
       }
     } catch (err: any) {
-      console.warn("Anonymous Sign-In Restricted/Failed. Falling back to secure persistent local session:", err);
-      
-      // Fallback to local session guest player
-      const randomId = Math.random().toString(36).substring(2, 11);
-      const localUid = `local_${randomId}`;
-      const guestUser = {
-        uid: localUid,
-        displayName: guestName.trim(),
-        email: null,
-        photoURL: null,
-      };
-      
-      // Set local persistent cache
-      localStorage.setItem("local_sovereign_session", JSON.stringify(guestUser));
-      
-      if (onLoginSuccess) {
-        onLoginSuccess(guestUser);
-      }
+      console.error("Code Verification Error:", err);
+      setError("Invalid verification code. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -86,6 +155,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="w-full max-w-md bg-slate-200 dark:bg-slate-700 rounded-3xl p-8 border border-slate-400 dark:border-slate-500 shadow-xl relative overflow-hidden"
       >
+        <div id="recaptcha-container"></div>
         {/* Decorative Royal Corner Glow */}
         <div className="absolute -top-16 -right-16 w-32 h-32 bg-amber-100/10 rounded-full blur-2xl opacity-60 pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-slate-500/10 rounded-full blur-2xl opacity-60 pointer-events-none" />
@@ -128,46 +198,83 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             Sign in with Google
           </button>
           <div className="text-[10px] text-center text-slate-400 leading-normal px-2 mt-2">
-            💡 Run inside an iframe? If Google Popup is blocked, click to <a href={window.location.href} target="_blank" rel="noopener noreferrer" className="text-amber-600 font-semibold underline hover:text-amber-700 bg-amber-50 px-1 rounded">Open in a New Tab</a> or enter with Guest Pass below under 1 second!
+            💡 Run inside an iframe? If Google Popup is blocked, click to <a href={window.location.href} target="_blank" rel="noopener noreferrer" className="text-amber-600 font-semibold underline hover:text-amber-700 bg-amber-50 px-1 rounded">Open in a New Tab</a> or enter with Phone Auth below!
           </div>
 
           {/* Separator */}
           <div className="flex items-center my-6">
             <div className="flex-grow border-t border-slate-100" />
-            <span className="px-3 text-xs text-slate-400 uppercase tracking-widest font-semibold">Or pass as Guest</span>
+            <span className="px-3 text-xs text-slate-400 uppercase tracking-widest font-semibold">Or use Phone Auth</span>
             <div className="flex-grow border-t border-slate-100" />
           </div>
 
-          {/* Anonymous Guest Access */}
-          <form onSubmit={handleGuestLogin} className="space-y-4">
-            <div>
-              <label htmlFor="guest_name" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Choose Your Royal Stage Name
-              </label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  id="guest_name"
-                  type="text"
-                  placeholder="e.g. Duke of Developers"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  disabled={isLoading}
-                  className="w-full pl-10 pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-medium text-slate-900"
-                />
+          {/* Phone Auth */}
+          {!confirmationResult ? (
+            <form onSubmit={handleSendCode} className="space-y-4">
+              <div>
+                <label htmlFor="phone_number" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Enter Phone Number
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    id="phone_number"
+                    type="tel"
+                    placeholder="+1234567890"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    disabled={isLoading}
+                    className="w-full pl-10 pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-medium text-slate-900"
+                  />
+                </div>
               </div>
-            </div>
 
-            <button
-              id="submit-register"
-              type="submit"
-              disabled={isLoading || !guestName.trim()}
-              className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 transition-all duration-200 cursor-pointer shadow-lg shadow-amber-500/15"
-            >
-              <Sparkles className="w-4 h-4 text-amber-100" />
-              Gain Crest & Enter app
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isLoading || !phoneNumber.trim()}
+                className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 transition-all duration-200 cursor-pointer shadow-lg shadow-amber-500/15"
+              >
+                <Sparkles className="w-4 h-4 text-amber-100" />
+                Send Verification Code
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyCode} className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="verification_code" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Verification Code
+                  </label>
+                  {timeLeft !== null && (
+                    <span className="text-[10px] font-bold text-slate-400 font-mono">
+                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <CheckCircle2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    id="verification_code"
+                    type="text"
+                    placeholder="123456"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    disabled={isLoading}
+                    className="w-full pl-10 pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-medium text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading || !verificationCode.trim()}
+                className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 transition-all duration-200 cursor-pointer shadow-lg shadow-amber-500/15"
+              >
+                <Sparkles className="w-4 h-4 text-amber-100" />
+                Verify Code
+              </button>
+            </form>
+          )}
         </div>
 
         <div className="mt-8 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">

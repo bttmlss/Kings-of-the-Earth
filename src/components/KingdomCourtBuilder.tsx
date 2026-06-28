@@ -67,6 +67,7 @@ export default function KingdomCourtBuilder({
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
   const [isTwoFingers, setIsTwoFingers] = useState(false);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [currentScale, setCurrentScale] = useState(1);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
 
   const preventNativePropagation = useCallback((el: HTMLInputElement | null) => {
@@ -914,6 +915,8 @@ export default function KingdomCourtBuilder({
             limitToBounds={false}
             centerOnInit={true}
             doubleClick={{ disabled: true }}
+            onTransformed={(ref) => setCurrentScale(ref.state.scale)}
+            onInit={(ref) => setCurrentScale(ref.state.scale)}
             panning={{
               disabled: false,
               excluded: ["no-pan", "input", "textarea", "button", "select"]
@@ -931,61 +934,21 @@ export default function KingdomCourtBuilder({
             {({ zoomIn, zoomOut, resetTransform, setTransform, state }) => (
               <div 
                 onTouchStart={(e) => {
-                  if (e.touches.length === 2) {
-                    setIsTwoFingers(true);
-                    const t1 = e.touches[0];
-                    const t2 = e.touches[1];
-                    const midX = (t1.clientX + t2.clientX) / 2;
-                    const midY = (t1.clientY + t2.clientY) / 2;
-                    lastTouchRef.current = { x: midX, y: midY };
-                  } else {
-                    setIsTwoFingers(false);
-                    lastTouchRef.current = null;
-                  }
+                  if (e.touches.length === 1) e.stopPropagation();
+                  else setIsTwoFingers(true);
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length === 2) {
-                    setIsTwoFingers(true);
-                    const t1 = e.touches[0];
-                    const t2 = e.touches[1];
-                    const midX = (t1.clientX + t2.clientX) / 2;
-                    const midY = (t1.clientY + t2.clientY) / 2;
-
-                    if (lastTouchRef.current) {
-                      const dx = midX - lastTouchRef.current.x;
-                      const dy = midY - lastTouchRef.current.y;
-                      setTransform(
-                        state.positionX + dx,
-                        state.positionY + dy,
-                        state.scale,
-                        0,
-                        "linear"
-                      );
-                    }
-                    lastTouchRef.current = { x: midX, y: midY };
-                  } else {
-                    setIsTwoFingers(false);
-                    lastTouchRef.current = null;
-                  }
+                  if (e.touches.length === 1) e.stopPropagation();
                 }}
                 onTouchEnd={(e) => {
-                  if (e.touches.length === 2) {
-                    setIsTwoFingers(true);
-                    const t1 = e.touches[0];
-                    const t2 = e.touches[1];
-                    const midX = (t1.clientX + t2.clientX) / 2;
-                    const midY = (t1.clientY + t2.clientY) / 2;
-                    lastTouchRef.current = { x: midX, y: midY };
-                  } else {
-                    setIsTwoFingers(false);
-                    lastTouchRef.current = null;
-                  }
+                  if (e.touches.length === 1) e.stopPropagation();
+                  else setIsTwoFingers(false);
                 }}
-                onTouchCancel={() => {
-                  setIsTwoFingers(false);
-                  lastTouchRef.current = null;
+                onTouchCancel={(e) => {
+                  if (e.touches.length === 1) e.stopPropagation();
+                  else setIsTwoFingers(false);
                 }}
-                className={`w-full h-full flex-1 min-h-0 relative overflow-hidden bg-slate-50/5 dark:bg-slate-950/5 select-none ${
+                className={`w-full h-full flex-1 min-h-0 relative overflow-hidden bg-slate-50/5 dark:bg-slate-950/5 select-none no-invert-scroll ${
                   isTwoFingers ? "cursor-grabbing touch-none" : "cursor-default touch-auto"
                 }`}
               >
@@ -1189,30 +1152,30 @@ export default function KingdomCourtBuilder({
                 </div>
 
                 {/* Floating Zoom Controls */}
-                <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md">
+                <div className="absolute top-4 right-4 z-20 flex flex-col items-center gap-0.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md">
                   <button
                     type="button"
-                    onClick={() => zoomOut()}
-                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition-all text-slate-600 dark:text-slate-350 active:scale-95 cursor-pointer"
-                    title="Zoom Out"
+                    onClick={() => zoomIn()}
+                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-bold transition-all text-slate-600 dark:text-slate-350 active:scale-95 cursor-pointer"
+                    title="Zoom In"
                   >
-                    －
+                    ＋
                   </button>
                   <button
                     type="button"
                     onClick={() => resetTransform()}
-                    className="px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                    className="py-1 px-0.5 text-[8px] leading-none font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
                     title="Reset Zoom & Pan"
                   >
-                    {Math.round(state.scale * 100)}%
+                    {Math.round(currentScale * 100)}%
                   </button>
                   <button
                     type="button"
-                    onClick={() => zoomIn()}
-                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition-all text-slate-600 dark:text-slate-350 active:scale-95 cursor-pointer"
-                    title="Zoom In"
+                    onClick={() => zoomOut()}
+                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-bold transition-all text-slate-600 dark:text-slate-350 active:scale-95 cursor-pointer"
+                    title="Zoom Out"
                   >
-                    ＋
+                    －
                   </button>
                 </div>
 

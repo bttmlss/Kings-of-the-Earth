@@ -10,6 +10,9 @@ export interface UserProfile {
   email: string | null;
   photoURL: string | null;
   courtPresets?: CourtPreset[];
+  bio?: string;
+  legalName?: string;
+  showLegalName?: boolean;
 }
 
 export interface Campaign {

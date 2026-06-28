@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 export function useGlobalInvertedScroll() {
   useEffect(() => {
     const isSnapContainer = (el: HTMLElement): boolean => {
-      if (el.id === 'profile-screen-container' || el.id === 'candidate-campaign-container' || el.id === 'campaign-detail-container') return true;
+      if (el.id === 'profile-screen-container' || el.id === 'candidate-campaign-container') return true;
       const style = window.getComputedStyle(el);
       const scrollSnapType = style.scrollSnapType || (style as any).webkitScrollSnapType || '';
       if (scrollSnapType && scrollSnapType !== 'none') return true;
@@ -84,6 +84,14 @@ export function useGlobalInvertedScroll() {
       let target = e.target as HTMLElement;
       if (target && target.nodeType === 3) target = target.parentNode as HTMLElement;
       
+      let checkTarget: HTMLElement | null = target;
+      while (checkTarget && checkTarget !== document.body) {
+        if (checkTarget.classList && checkTarget.classList.contains('no-invert-scroll')) {
+          return; // Ignore inverted scroll for this element and its children
+        }
+        checkTarget = checkTarget.parentElement;
+      }
+      
       const scrollParent = getScrollParent(target);
       
       if (scrollParent) {
@@ -115,6 +123,14 @@ export function useGlobalInvertedScroll() {
     const handleTouchStart = (e: TouchEvent) => {
       let target = e.target as HTMLElement;
       if (target && target.nodeType === 3) target = target.parentNode as HTMLElement;
+      
+      let checkTarget: HTMLElement | null = target;
+      while (checkTarget && checkTarget !== document.body) {
+        if (checkTarget.classList && checkTarget.classList.contains('no-invert-scroll')) {
+          return;
+        }
+        checkTarget = checkTarget.parentElement;
+      }
       
       activeScrollParent = getScrollParent(target);
       if (activeScrollParent) {

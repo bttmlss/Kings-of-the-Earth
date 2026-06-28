@@ -3,7 +3,7 @@ import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle,
 import { Campaign, Candidate } from "../types";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import { auth, db } from "../firebase";
-import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 import PostCard, { Post } from "./PostCard";
 
@@ -26,9 +26,7 @@ export default function CandidateCampaignScreen({
   userPhotoURL,
   userProfiles,
 }: CandidateCampaignScreenProps) {
-  const [hasJoined, setHasJoined] = useState(() => {
-    return localStorage.getItem(`join_req_${candidate.userId}_${userId}`) === "true";
-  });
+  const [hasJoined, setHasJoined] = useState(false);
   const [showJoinToast, setShowJoinToast] = useState(false);
   const [showDetailsPage, setShowDetailsPage] = useState(false);
 
@@ -44,6 +42,24 @@ export default function CandidateCampaignScreen({
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [selectedMediaPost, setSelectedMediaPost] = useState<Post | null>(null);
+
+  useEffect(() => {
+    // Check if user has already requested to join
+    if (!isGuest && userId !== candidate.userId) {
+      const checkJoinStatus = async () => {
+        try {
+          const docRef = doc(db, "court_requests", `${candidate.userId}_${userId}`);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setHasJoined(true);
+          }
+        } catch (err) {
+          console.warn("Failed to check court request status:", err);
+        }
+      };
+      checkJoinStatus();
+    }
+  }, [userId, candidate.userId, isGuest]);
 
   useEffect(() => {
     // Log campaign visit for this specific candidate
@@ -200,14 +216,25 @@ export default function CandidateCampaignScreen({
     }
     
     setHasJoined(true);
-    const key = `join_req_${candidate.userId}_${userId}`;
-    localStorage.setItem(key, "true");
     
     setShowJoinToast(true);
     // Hide toast after 4 seconds
     setTimeout(() => {
       setShowJoinToast(false);
     }, 4000);
+
+    // Save request to db
+    try {
+      const docRef = doc(db, "court_requests", `${candidate.userId}_${userId}`);
+      await setDoc(docRef, {
+        candidateId: candidate.userId,
+        requesterId: userId,
+        campaignId: campaign.id,
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn("Failed to save court request:", err);
+    }
 
     // Send a notification to the candidate
     try {
