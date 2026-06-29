@@ -1,4 +1,5 @@
 import fs from "fs";
+import crypto from "crypto";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -424,6 +425,21 @@ async function startServer() {
       }
 
       const db = getFirestore();
+
+      // Velocity Check for Sybil Attacks
+      const ipAddress = req.ip || req.headers['x-forwarded-for'] || "unknown";
+      const ipHash = crypto.createHash('sha256').update(typeof ipAddress === 'string' ? ipAddress : ipAddress[0]).digest('hex');
+      const twoMinutesAgo = new Date(Date.now() - 120 * 1000);
+
+      const velocityQuery = db.collection('vote_velocity_logs')
+        .where('ipHash', '==', ipHash)
+        .where('targetId', '==', candidateId)
+        .where('timestamp', '>=', twoMinutesAgo);
+
+      const velocityCountSnap = await velocityQuery.count().get();
+      if (velocityCountSnap.data().count >= 10) {
+        return res.status(429).json({ error: "Unnatural voting velocity detected." });
+      }
       
       const campaignDocRef = db.doc(`campaigns/${campaignId}`);
       const candidateDocRef = db.doc(`campaigns/${campaignId}/candidates/${candidateId}`);
@@ -574,6 +590,15 @@ async function startServer() {
         }
       });
       
+      // Transient Logging for Velocity Rate Limiting
+      const expiresAt = new Date(Date.now() + 120 * 1000);
+      await db.collection('vote_velocity_logs').add({
+        ipHash,
+        targetId: candidateId,
+        timestamp: FieldValue.serverTimestamp(),
+        expiresAt: expiresAt,
+      });
+
       console.log(`[AUDIT] User ${userId} cast vote for ${candidateId} in campaign ${campaignId}`);
 
       // Async check for percentile change for the candidate

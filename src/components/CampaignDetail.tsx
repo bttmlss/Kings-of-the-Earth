@@ -15,7 +15,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit3, Clock, Check, Settings } from "lucide-react";
+import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit3, Clock, Check, Settings, Search, UserCircle } from "lucide-react";
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
@@ -131,6 +131,8 @@ export default function CampaignDetail({
   const [creatorCourt, setCreatorCourt] = useState<any | null>(null);
   const [showAllCampaignsPage, setShowAllCampaignsPage] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [quickVoteSearchQuery, setQuickVoteSearchQuery] = useState("");
+  const [selectedQuickVoteCandidate, setSelectedQuickVoteCandidate] = useState<string | null>(null);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [initialSelectDone, setInitialSelectDone] = useState(false);
@@ -887,48 +889,132 @@ export default function CampaignDetail({
               </div>
             </motion.div>
 
-            {/* Campaigns Box */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden shrink-0 flex flex-col gap-3"
-            >
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-amber-500/20" />
-              
-              <div className="flex items-center justify-between">
-                <h3 className="font-display font-black text-slate-950 dark:text-slate-200 text-xs tracking-widest uppercase flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-500" />
-                  Campaigns
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowAllCampaignsPage(true)}
-                  className="text-[10px] text-amber-600 dark:text-amber-500 font-extrabold hover:underline uppercase tracking-wider cursor-pointer flex items-center gap-1"
-                >
-                  See All →
-                </button>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 shrink-0">
+              {/* Quick Vote Box */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm relative flex flex-col justify-center"
+              >
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-emerald-500/20" />
+                <div className="flex items-center gap-2 shrink-0 relative z-10">
+                  <button
+                    onClick={() => {
+                      if (selectedQuickVoteCandidate) {
+                         const cand = activeCandidates.find(c => c.id === selectedQuickVoteCandidate);
+                         if (window.confirm(`Are you sure you want to vote for ${cand?.displayName}?`)) {
+                           handleVote(undefined, selectedQuickVoteCandidate);
+                           setQuickVoteSearchQuery("");
+                           setSelectedQuickVoteCandidate(null);
+                         }
+                      }
+                    }}
+                    disabled={!selectedQuickVoteCandidate || isCastingVote !== null}
+                    className="h-9 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:dark:bg-slate-800 text-white disabled:text-slate-500 font-mono font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-xs flex items-center justify-center shrink-0"
+                  >
+                    {isCastingVote ? "VOTING..." : "QUICK VOTE"}
+                  </button>
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search claimant..."
+                      value={quickVoteSearchQuery}
+                      onChange={(e) => {
+                        setQuickVoteSearchQuery(e.target.value);
+                        setSelectedQuickVoteCandidate(null);
+                      }}
+                      className="w-full h-9 bg-slate-200/50 dark:bg-slate-950/50 border border-slate-300 dark:border-slate-800 rounded-xl py-2 pl-8 pr-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                    />
+                    
+                    {/* Dropdown for search results */}
+                    {quickVoteSearchQuery.trim() !== "" && !selectedQuickVoteCandidate && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50 overflow-hidden max-h-[160px] flex flex-col">
+                        <div className="flex-1 overflow-y-auto no-scrollbar p-1 space-y-1">
+                           {activeCandidates.filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase())).length === 0 ? (
+                              <div className="text-center py-4 text-[10px] font-mono text-slate-400 uppercase">
+                                [ No claimants found ]
+                              </div>
+                           ) : (
+                             activeCandidates
+                               .filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase()))
+                               .map(c => (
+                                 <button
+                                   key={c.id}
+                                   onClick={() => {
+                                     setSelectedQuickVoteCandidate(c.id);
+                                     setQuickVoteSearchQuery(c.displayName || "");
+                                   }}
+                                   className={`w-full flex items-center gap-2 p-1.5 rounded-lg border text-left transition-all shrink-0 ${
+                                     selectedQuickVoteCandidate === c.id
+                                       ? "border-emerald-500 bg-emerald-500/10"
+                                       : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                   }`}
+                                 >
+                                   {c.photoURL ? (
+                                     <img src={c.photoURL} className="w-6 h-6 rounded-md object-cover" />
+                                   ) : (
+                                     <div className="w-6 h-6 rounded-md bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                                       <UserCircle className="w-4 h-4 text-slate-400" />
+                                     </div>
+                                   )}
+                                   <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                     {c.displayName}
+                                   </span>
+                                 </button>
+                               ))
+                           )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
 
-              {/* Quick list of featured campaigns (except current one) */}
-              {(() => {
-                if (activeCandidates.length === 0) {
+              {/* Campaigns Box */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm relative overflow-hidden flex flex-col gap-2"
+              >
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-amber-500/20" />
+                
+                <div className="flex items-center justify-between pb-1">
+                  <h3 className="font-display font-black text-slate-950 dark:text-slate-200 text-xs tracking-widest uppercase flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-amber-500" />
+                    Featured Campaigns
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllCampaignsPage(true)}
+                    className="text-[10px] text-amber-600 dark:text-amber-500 font-extrabold hover:underline uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                  >
+                    See All →
+                  </button>
+                </div>
+
+                {/* Quick list of featured campaigns (except current one) */}
+                {(() => {
+                  if (activeCandidates.length === 0) {
+                    return (
+                      <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
+                        [ No other active campaigns available ]
+                      </div>
+                    );
+                  }
                   return (
-                    <div className="text-center py-4 text-xs font-mono text-slate-400 uppercase">
-                      [ No other active campaigns available ]
-                    </div>
+                    <Campaign3DCarousel
+                      candidates={activeCandidates}
+                      userProfiles={userProfiles || []}
+                      onViewProfile={onViewProfile || (() => {})}
+                      setSelectedCandidate={setSelectedCandidate}
+                    />
                   );
-                }
-                return (
-                  <Campaign3DCarousel
-                    candidates={activeCandidates}
-                    userProfiles={userProfiles || []}
-                    onViewProfile={onViewProfile || (() => {})}
-                    setSelectedCandidate={setSelectedCandidate}
-                  />
-                );
-              })()}
-            </motion.div>
+                })()}
+              </motion.div>
+            </div>
           </div>
 
           {/* Prompt to scroll to Domain Leaderboard */}

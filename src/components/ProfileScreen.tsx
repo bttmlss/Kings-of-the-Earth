@@ -617,90 +617,92 @@ export default function ProfileScreen({
       {/* Profile summary block wrapped for tight spacing */}
       <div className={`flex flex-col gap-1 items-center w-full ${!isOwnProfile && onBack ? "pt-16 sm:pt-12" : ""}`}>
         {/* Profile summary header is ALWAYS visible now */}
-        <div className="bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700/80 rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4 relative overflow-hidden max-w-sm sm:max-w-md w-full">
-        <div className="flex items-center gap-3">
-          {user.photoURL ? (
-            <img
-              src={user.photoURL || undefined}
-              alt={user.displayName || "G"}
-              referrerPolicy="no-referrer"
-              className="w-12 h-12 rounded-xl object-cover ring-2 ring-amber-100 shrink-0"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 ring-2 ring-slate-50 shrink-0 select-none">
-              <UserCircle className="w-8 h-8 text-slate-400 stroke-[1.25]" />
-            </div>
-          )}
-
-          <div className="space-y-0.5 pr-14 text-left">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <h2 className="font-display font-black text-base text-slate-950 dark:text-white tracking-tight">
-                {user.displayName || "Sovereign Lord"}
-              </h2>
-            </div>
-            
-            {showLegalName && legalName && (
-              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                {legalName}
-              </p>
+        <div className="bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700/80 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2 relative overflow-hidden max-w-sm sm:max-w-md w-full">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            {user.photoURL ? (
+              <img
+                src={user.photoURL || undefined}
+                alt={user.displayName || "G"}
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-xl object-cover ring-2 ring-amber-100 shrink-0 mt-0.5"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 ring-2 ring-slate-50 shrink-0 select-none mt-0.5">
+                <UserCircle className="w-8 h-8 text-slate-400 stroke-[1.25]" />
+              </div>
             )}
 
-            {/* Render direct custom bio proclamation on profile card */}
-            {(!isOwnProfile && isProfilePrivate) ? (
-              <p className="text-xs text-rose-500 italic mt-1 font-semibold flex items-center gap-1">
-                <Lock className="w-3 h-3 text-rose-500" />
-                This claimant’s proclamations are private
-              </p>
-            ) : bio ? (
-              <p className="text-xs text-slate-600 dark:text-slate-300 italic select-text break-words mt-1 rounded-sm">
-                “{bio}”
-              </p>
-            ) : (
-              <p className="text-[10px] text-slate-400 italic select-text mt-1">
-                No proclamation written yet.
-              </p>
+            <div className="space-y-0.5 text-left flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="font-display font-black text-base text-slate-950 dark:text-white tracking-tight break-words">
+                  {user.displayName || "Sovereign Lord"}
+                </h2>
+              </div>
+              
+              {showLegalName && legalName && (
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider break-words">
+                  {legalName}
+                </p>
+              )}
+
+              {/* Render direct custom bio proclamation on profile card */}
+              {(!isOwnProfile && isProfilePrivate) ? (
+                <p className="text-xs text-rose-500 italic mt-1 font-semibold flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-rose-500" />
+                  This claimant’s proclamations are private
+                </p>
+              ) : bio ? (
+                <p className="text-xs text-slate-600 dark:text-slate-300 italic select-text break-words mt-1 rounded-sm">
+                  “{bio}”
+                </p>
+              ) : (
+                <p className="text-[10px] text-slate-400 italic select-text mt-1">
+                  No proclamation written yet.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-3 shrink-0 ml-2 mt-0.5">
+            {!isOwnProfile && auth.currentUser && (
+              <button
+                onClick={handleFollowRequest}
+                disabled={isFollowLoading}
+                onMouseEnter={() => setIsFollowHovered(true)}
+                onMouseLeave={() => setIsFollowHovered(false)}
+                className={`flex items-center justify-center gap-1 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                  followStatus === "accepted" 
+                    ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
+                    : followStatus === "pending"
+                    ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
+                    : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20"
+                }`}
+              >
+                {followStatus === "accepted" 
+                  ? (isFollowHovered ? "Unfollow" : "Following") 
+                  : followStatus === "pending" 
+                  ? (isFollowHovered ? "Cancel Req" : "Requested") 
+                  : "Follow"}
+              </button>
             )}
 
             {/* Follow Stats */}
-            <div className="flex items-center gap-3 mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <div className="flex flex-col items-end gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               <div 
                 onClick={() => setShowFollowModal("followers")}
                 className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
-                <span className="text-slate-800 dark:text-white">{followersCount}</span> Followers
+                <span className="text-slate-800 dark:text-white text-xs">{followersCount}</span> Followers
               </div>
               <div 
                 onClick={() => setShowFollowModal("following")}
                 className="flex items-center gap-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
               >
-                <span className="text-slate-800 dark:text-white">{followingCount}</span> Following
+                <span className="text-slate-800 dark:text-white text-xs">{followingCount}</span> Following
               </div>
             </div>
           </div>
-
-          {!isOwnProfile && auth.currentUser && (
-            <button
-              onClick={handleFollowRequest}
-              disabled={isFollowLoading}
-              onMouseEnter={() => setIsFollowHovered(true)}
-              onMouseLeave={() => setIsFollowHovered(false)}
-              className={`absolute top-4 right-4 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
-                followStatus === "accepted" 
-                  ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
-                  : followStatus === "pending"
-                  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-rose-500/15 hover:text-rose-600 hover:border-rose-350"
-                  : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20"
-              }`}
-            >
-              {followStatus === "accepted" 
-                ? (isFollowHovered ? "Unfollow" : "Following") 
-                : followStatus === "pending" 
-                ? (isFollowHovered ? "Cancel Req" : "Requested") 
-                : "Follow"}
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Profile Actions: Two even-sized bars under the card */}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud } from "lucide-react";
 import { Campaign, Candidate } from "../types";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
@@ -6,6 +6,8 @@ import { auth, db } from "../firebase";
 import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 import PostCard, { Post } from "./PostCard";
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from '../lib/cropImage';
 
 interface CandidateCampaignScreenProps {
   campaign: Campaign;
@@ -155,6 +157,28 @@ export default function CandidateCampaignScreen({
   const [editError, setEditError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Cropper states
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+
+  const onCropComplete = useCallback((croppedArea: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
+
+  const handleCropSave = async () => {
+    try {
+      if (!imageToCrop || !croppedAreaPixels) return;
+      const croppedImage = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      setEditBannerURL(croppedImage);
+      setImageToCrop(null);
+    } catch (e) {
+      console.error(e);
+      setEditError("Failed to crop image.");
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -167,16 +191,18 @@ export default function CandidateCampaignScreen({
       setEditError("Please select a valid image file.");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      setEditError("Image size must be under 4MB.");
+    if (file.size > 8 * 1024 * 1024) {
+      setEditError("Image size must be under 8MB.");
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        setEditBannerURL(event.target.result as string);
+        setImageToCrop(event.target.result as string);
         setEditError(null);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
       }
     };
     reader.onerror = () => {
@@ -516,7 +542,7 @@ export default function CandidateCampaignScreen({
                 
                 <div className="w-full bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 flex flex-col relative overflow-hidden shadow-md">
                   {/* Elegant Banner Area */}
-                  <div className="w-full h-28 sm:h-40 relative bg-slate-200 dark:bg-slate-950 overflow-hidden shrink-0 border-b border-slate-200 dark:border-slate-800/80">
+                  <div className="w-full h-32 sm:h-48 relative bg-slate-200 dark:bg-slate-950 overflow-hidden shrink-0 border-b border-slate-200 dark:border-slate-800/80">
                     {localBannerURL ? (
                       <img src={localBannerURL || undefined} alt="Campaign banner" className="w-full h-full object-cover" />
                     ) : (
@@ -554,7 +580,7 @@ export default function CandidateCampaignScreen({
                   <div className="p-5 sm:p-6 pb-12 sm:pb-6 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 relative">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
                     
-                    <div className="flex flex-col sm:flex-row items-center gap-4 z-10 relative -mt-12 sm:-mt-16">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 z-10 relative -mt-10 sm:-mt-12">
                       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white dark:border-slate-900 shadow-md shrink-0 bg-slate-250 dark:bg-slate-800 flex items-center justify-center relative bg-white dark:bg-slate-900">
                         {candidate.photoURL ? (
                           <img src={candidate.photoURL || undefined} alt={candidate.displayName} className="w-full h-full object-cover" />
@@ -853,6 +879,61 @@ export default function CandidateCampaignScreen({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Cropper Modal */}
+      <AnimatePresence>
+        {imageToCrop && (
+          <div className="fixed inset-0 z-[150] bg-black/90 flex flex-col items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-lg h-[60vh] bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="flex-1 relative">
+                <Cropper
+                  image={imageToCrop}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={2/1}
+                  onCropChange={setCrop}
+                  onCropComplete={onCropComplete}
+                  onZoomChange={setZoom}
+                  showGrid={true}
+                />
+              </div>
+              <div className="bg-slate-900 p-4 border-t border-slate-800 flex items-center justify-between z-10 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">Zoom</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    value={zoom}
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="w-24 accent-amber-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setImageToCrop(null)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-mono font-bold uppercase tracking-widest transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCropSave}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-mono font-bold uppercase tracking-widest shadow-md transition-colors"
+                  >
+                    Apply Crop
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
