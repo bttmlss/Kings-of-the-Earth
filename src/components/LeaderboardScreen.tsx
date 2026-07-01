@@ -1,9 +1,110 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { collection, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, increment } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Candidate } from "../types";
-import { Trophy, Crown, Search, ArrowUp, ArrowDown, Minus, RefreshCw, PlaneTakeoff, Info, UserCircle, X } from "lucide-react";
+import { Trophy, Crown, Search, ArrowUp, ArrowDown, Minus, RefreshCw, PlaneTakeoff, Info, UserCircle, X, MapPin, BadgeCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps';
+
+const API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
+const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+
+function AutocompleteSearchBar({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const placesLib = useMapsLibrary('places');
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!placesLib || !value.trim()) {
+      setPredictions([]);
+      return;
+    }
+    
+    let isActive = true;
+    const fetchSuggestions = async () => {
+      try {
+        const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: value });
+        if (isActive && suggestions) {
+          setPredictions(suggestions.map((s: any) => s.placePrediction).filter(Boolean));
+        }
+      } catch (err) {
+        if (isActive) setPredictions([]);
+      }
+    };
+    
+    fetchSuggestions();
+    
+    return () => { isActive = false; };
+  }, [value, placesLib]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full sm:max-w-[320px]" ref={wrapperRef}>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+      <input
+        id="search-leaderboard"
+        type="text"
+        placeholder="SEARCH DOMAIN, PLAYER, OR LOCATION..."
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-[#07080a] border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono tracking-widest text-amber-600 dark:text-amber-400 focus:outline-none focus:border-amber-500 placeholder:text-slate-400 dark:placeholder:text-slate-700 transition-all uppercase"
+      />
+      
+      <AnimatePresence>
+        {isOpen && predictions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden z-50 divide-y divide-slate-100 dark:divide-slate-800/50"
+          >
+            {predictions.map((p) => {
+              const mainStr = p.mainText?.text || p.text?.text || "";
+              const secStr = p.secondaryText?.text || "";
+              const fullStr = p.text?.text || mainStr;
+              
+              return (
+              <div
+                key={p.placeId}
+                onClick={() => {
+                  onChange(fullStr);
+                  setIsOpen(false);
+                }}
+                className="px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer flex items-center gap-2.5 transition-colors"
+              >
+                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                  <MapPin className="w-3 h-3 text-amber-500" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{mainStr}</div>
+                  {secStr && <div className="text-[10px] text-slate-500 truncate">{secStr}</div>}
+                </div>
+              </div>
+            )})}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 interface LeaderboardScreenProps {
   campaigns: Campaign[];
@@ -22,6 +123,7 @@ interface AggregatedPlayer {
   bestKingdom: {
     domainTitle: string;
     voteCount: number;
+    isVerified?: boolean;
   } | null;
   photoURL?: string | null;
   bio?: string;
@@ -30,6 +132,7 @@ interface AggregatedPlayer {
     voteCount: number;
     campaignId?: string;
     isLeader?: boolean;
+    isVerified?: boolean;
   }[];
 }
 
@@ -117,9 +220,6 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
   const [players, setPlayers] = useState<AggregatedPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [scope, setScope] = useState<"global" | "continental" | "national" | "kings">("global");
-  const [selectedContinent, setSelectedContinent] = useState("North America");
-  const [selectedCountry, setSelectedCountry] = useState("United States");
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [selectedPlayer, setSelectedPlayer] = useState<AggregatedPlayer | null>(null);
   
@@ -152,14 +252,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
     }
   };
 
-  // Sync initial selections with the current user's deterministic location
-  useEffect(() => {
-    if (currentUserId) {
-      const region = getPlayerRegion(currentUserId);
-      setSelectedContinent(region.continent);
-      setSelectedCountry(region.country);
-    }
-  }, [currentUserId]);
+  // Removed sync initial selections
 
   useEffect(() => {
     async function loadLeaderboardData() {
@@ -232,12 +325,14 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
                 voteCount: cand.voteCount,
                 campaignId: camp.id,
                 isLeader: isLeader,
+                isVerified: camp.isVerified,
               });
 
               if (!p.bestKingdom || cand.voteCount > p.bestKingdom.voteCount) {
                 p.bestKingdom = {
                   domainTitle: camp.domainTitle,
                   voteCount: cand.voteCount,
+                  isVerified: camp.isVerified,
                 };
               }
             }
@@ -342,10 +437,17 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
 
     if (personQuery.trim()) {
       const pQuery = personQuery.trim().toLowerCase();
-      result = result.filter((p) =>
-        p.displayName.toLowerCase().includes(pQuery) ||
-        (p.bio && p.bio.toLowerCase().includes(pQuery))
-      );
+      const pTokens = pQuery.split(/[\s,]+/).filter(Boolean);
+      result = result.filter((p) => {
+        const region = getPlayerRegion(p.userId);
+        const regionStr = `${region.country} ${region.continent}`.toLowerCase();
+        
+        return pTokens.every(t => 
+          p.displayName.toLowerCase().includes(t) ||
+          (p.bio && p.bio.toLowerCase().includes(t)) ||
+          regionStr.includes(t)
+        );
+      });
     }
 
     // Sort by crowns held, then total votes in search scope
@@ -357,23 +459,8 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
     });
   }, [players, searchQuery, campaigns]);
 
-  // 1. First segment the players by geographical scope (on top of processed search results)
-  const scopedPlayers = processedPlayers.filter((p) => {
-    if (scope === "kings") {
-      return campaigns.some((c) => (c as any).currentKingId === p.userId);
-    }
-    const region = getPlayerRegion(p.userId);
-    if (scope === "continental") {
-      return region.continent === selectedContinent;
-    }
-    if (scope === "national") {
-      return region.country === selectedCountry;
-    }
-    return true; // global
-  });
-
-  // 2. Already filtered at the search and geographical scope level
-  const filteredPlayers = scopedPlayers;
+  // 2. Already filtered at the search level
+  const filteredPlayers = processedPlayers;
 
   // 3. Track original ranks and slice to a 10-player window around the focused user if requested
   const rankedPlayers = filteredPlayers.map((player, index) => ({
@@ -401,181 +488,22 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
     displayedRankedPlayers = rankedPlayers.slice(0, 100);
   }
 
-  const currentUserRegion = getPlayerRegion(currentUserId);
-  const userScopedIndex = scopedPlayers.findIndex((p) => p.userId === currentUserId);
-  const userRank = userScopedIndex !== -1 ? userScopedIndex + 1 : null;
-  const totalScoped = scopedPlayers.length;
-
   return (
-    <div className="px-4 py-2 space-y-3.5 max-w-4xl mx-auto font-sans text-slate-800 dark:text-slate-100">
-      {/* Sleek Minimalist Title and Search Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-        <h2 className="font-display font-black text-2xl tracking-widest text-slate-900 dark:text-slate-100 uppercase flex items-center gap-2.5">
-          <Trophy className="w-5.5 h-5.5 text-amber-500" />
-          leaderboards
-        </h2>
+    <APIProvider apiKey={API_KEY} version="weekly">
+      <div className="px-4 py-2 space-y-3.5 max-w-4xl mx-auto font-sans text-slate-800 dark:text-slate-100">
+        {/* Sleek Minimalist Title and Search Row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
+          <h2 className="font-display font-black text-2xl tracking-widest text-slate-900 dark:text-slate-100 uppercase flex items-center gap-2.5">
+            <Trophy className="w-5.5 h-5.5 text-amber-500" />
+            leaderboards
+          </h2>
 
-        {/* Search Bar */}
-        <div className="relative w-full sm:max-w-[260px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-          <input
-            id="search-leaderboard"
-            type="text"
-            placeholder="SEARCH DOMAIN OR PLAYER..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-[#07080a] border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono tracking-widest text-amber-600 dark:text-amber-400 focus:outline-none focus:border-amber-500 placeholder:text-slate-400 dark:placeholder:text-slate-700 transition-all uppercase"
-          />
+          {/* Search Bar */}
+          <AutocompleteSearchBar value={searchQuery} onChange={setSearchQuery} />
         </div>
-      </div>
 
-      {/* Scope Segment Switcher */}
-      <div className="flex bg-slate-200/50 dark:bg-[#07080a] border border-slate-300 dark:border-slate-800/60 p-1 rounded-2xl max-w-lg shadow-inner">
-        <button
-          onClick={() => {
-            setScope("global");
-            setSearchQuery("");
-          }}
-          className={`flex-1 py-1.5 text-center text-[10px] font-mono font-extrabold uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
-            scope === "global"
-              ? "bg-white dark:bg-[#181a20] text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-slate-800"
-              : "text-slate-555 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          GLOBAL
-        </button>
-        <button
-          onClick={() => {
-            setScope("continental");
-            setSearchQuery("");
-            const region = getPlayerRegion(currentUserId);
-            setSelectedContinent(region.continent);
-          }}
-          className={`flex-1 py-1.5 text-center text-[10px] font-mono font-extrabold uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
-            scope === "continental"
-              ? "bg-white dark:bg-[#181a20] text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-slate-800"
-              : "text-slate-555 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          CONTINENTAL
-        </button>
-        <button
-          onClick={() => {
-            setScope("national");
-            setSearchQuery("");
-            const region = getPlayerRegion(currentUserId);
-            setSelectedCountry(region.country);
-          }}
-          className={`flex-1 py-1.5 text-center text-[10px] font-mono font-extrabold uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
-            scope === "national"
-              ? "bg-white dark:bg-[#181a20] text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-slate-800"
-              : "text-slate-555 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          NATIONAL
-        </button>
-        <button
-          onClick={() => {
-            setScope("kings");
-            setSearchQuery("");
-          }}
-          className={`flex-1 py-1.5 text-center text-[10px] font-mono font-extrabold uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
-            scope === "kings"
-              ? "bg-white dark:bg-[#181a20] text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-slate-800"
-              : "text-slate-555 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          KINGS ONLY
-        </button>
-      </div>
-
-      {/* Secondary Continental Segment Filter */}
-      <AnimatePresence mode="wait">
-        {scope === "continental" && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className="flex flex-row overflow-x-auto whitespace-nowrap gap-2 pb-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent snap-x"
-          >
-            {["North America", "Europe", "Asia-Pacific", "Latin America"].map((cName) => {
-              const count = players.filter((p) => getPlayerRegion(p.userId).continent === cName).length;
-              const isUserContinent = currentUserRegion.continent === cName;
-              return (
-                <button
-                  key={cName}
-                  onClick={() => setSelectedContinent(cName)}
-                  className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer border ${
-                    selectedContinent === cName
-                      ? "bg-white dark:bg-[#1a1d24] text-amber-600 dark:text-amber-400 border-amber-500/40 shadow-xs"
-                      : "bg-slate-200/50 dark:bg-[#08090d] text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-850 hover:bg-slate-300/40 dark:hover:bg-slate-900"
-                  }`}
-                >
-                  <span>{cName}</span>
-                  <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded-md font-mono ${
-                      selectedContinent === cName ? "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-slate-300/50 dark:bg-slate-900 text-slate-500 dark:text-slate-500"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                  {isUserContinent && (
-                    <span className="text-[8px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1 py-0.2 rounded font-extrabold">
-                      YOURS
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-
-        {/* Secondary National Segment Filter */}
-        {scope === "national" && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className="flex flex-row overflow-x-auto whitespace-nowrap gap-2 pb-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent snap-x"
-          >
-            {["United States", "Canada", "Mexico", "United Kingdom", "Germany", "France", "Italy", "Japan", "South Korea", "Australia", "Singapore", "Brazil", "Argentina", "Colombia"].map((cName) => {
-              const count = players.filter((p) => getPlayerRegion(p.userId).country === cName).length;
-              const isUserCountry = currentUserRegion.country === cName;
-
-              return (
-                <button
-                  key={cName}
-                  onClick={() => setSelectedCountry(cName)}
-                  className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer border ${
-                    selectedCountry === cName
-                      ? "bg-white dark:bg-[#1a1d24] text-amber-600 dark:text-amber-400 border-amber-500/40 shadow-xs"
-                      : "bg-slate-200/50 dark:bg-[#08090d] text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-850 hover:bg-slate-300/40 dark:hover:bg-slate-900"
-                  }`}
-                >
-                  <span>{cName}</span>
-                  <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded-md font-mono ${
-                      selectedCountry === cName ? "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-slate-300/50 dark:bg-slate-900 text-slate-500 dark:text-slate-500"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                  {isUserCountry && (
-                    <span className="text-[8px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1 py-0.2 rounded font-extrabold">
-                      YOURS
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-
-
-      {/* Custom Scored Standings Spreadsheet-Style Grid Table */}
-      <div className="border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-[#07080a] overflow-hidden shadow-sm relative font-mono select-none rounded-[20px]">
+        {/* Custom Scored Standings Spreadsheet-Style Grid Table */}
+        <div className="border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-[#07080a] overflow-hidden shadow-sm relative font-mono select-none rounded-[20px]">
         {isLoading ? (
           <div className="p-20 flex flex-col justify-center items-center gap-4">
             <RefreshCw className="w-8 h-8 text-amber-500 animate-spin" />
@@ -810,7 +738,10 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
                       PRIMARY REALM:
                     </div>
                     <div className="flex justify-between items-center text-slate-700 dark:text-amber-200 font-medium">
-                      <span className="truncate pr-2 font-display uppercase font-bold tracking-tight text-[11px] select-all">{selectedPlayer.bestKingdom.domainTitle}</span>
+                      <div className="flex items-center gap-1 min-w-0 pr-2">
+                        <span className="truncate font-display uppercase font-bold tracking-tight text-[11px] select-all">{selectedPlayer.bestKingdom.domainTitle}</span>
+                        {selectedPlayer.bestKingdom.isVerified && <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                      </div>
                       <span className="font-mono text-[9px] text-amber-500 font-bold shrink-0 select-all">{selectedPlayer.bestKingdom.voteCount} votes</span>
                     </div>
                   </div>
@@ -825,7 +756,10 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
                     <div className="max-h-24 overflow-y-auto space-y-1 divide-y divide-slate-200/50 dark:divide-slate-800 pr-1 scrollbar-thin">
                       {selectedPlayer.kingdoms.map((k, kIdx) => (
                         <div key={kIdx} className="flex justify-between items-center text-[10px] py-1 first:pt-0 last:pb-0 text-slate-700 dark:text-slate-300 uppercase">
-                          <span className="truncate font-bold tracking-tight pr-2 select-all">{k.domainTitle}</span>
+                          <div className="flex items-center gap-1 min-w-0 pr-2">
+                            <span className="truncate font-bold tracking-tight select-all">{k.domainTitle}</span>
+                            {k.isVerified && <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                          </div>
                           <span className="font-mono text-[9px] text-indigo-400 font-bold shrink-0 select-all">{k.voteCount} votes</span>
                         </div>
                       ))}
@@ -837,6 +771,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </APIProvider>
   );
 }

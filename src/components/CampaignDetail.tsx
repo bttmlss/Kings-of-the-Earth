@@ -15,16 +15,19 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit3, Clock, Check, Settings, Search, UserCircle } from "lucide-react";
+import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote, ShieldCheck, Trash2, ArrowUp, ArrowDown, FolderTree, Minus, Trophy, Award, LogOut, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit3, Clock, Check, Settings, Search, UserCircle, Map as MapIcon, MapPin, BadgeCheck } from "lucide-react";
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
 import { motion, AnimatePresence } from "motion/react";
+import PhoneVerificationPopup from "./PhoneVerificationPopup";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import CampaignFeed from "./CampaignFeed";
 import CreatePostModal from "./CreatePostModal";
 import CandidateCampaignScreen from "./CandidateCampaignScreen";
 import Campaign3DCarousel from "./Campaign3DCarousel";
+import DominionMapModal from "./DominionMapModal";
+import LocationMapModal from "./LocationMapModal";
 
 interface CampaignDetailProps {
   campaign: Campaign;
@@ -133,9 +136,11 @@ export default function CampaignDetail({
   const [searchQuery, setSearchQuery] = useState("");
   const [quickVoteSearchQuery, setQuickVoteSearchQuery] = useState("");
   const [selectedQuickVoteCandidate, setSelectedQuickVoteCandidate] = useState<string | null>(null);
+  const [showPhoneVerification, setShowPhoneVerification] = useState(false);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [initialSelectDone, setInitialSelectDone] = useState(false);
+  const [showLocationMap, setShowLocationMap] = useState(false);
 
   // Real-time Campaign Object & Editing States
   const [currentCampaign, setCurrentCampaign] = useState<Campaign>(campaign);
@@ -519,6 +524,12 @@ export default function CampaignDetail({
     if (e) e.stopPropagation();
     setError(null);
 
+    // Require phone verification to vote
+    if (auth.currentUser && !auth.currentUser.phoneNumber && !auth.currentUser.providerData.some(p => p.providerId === 'phone')) {
+      setShowPhoneVerification(true);
+      return;
+    }
+
     const isFrozen = campaign.isFrozen;
     if (isFrozen) {
       setError("This campaign's votes are currently frozen. Casting new votes is disabled.");
@@ -672,6 +683,8 @@ export default function CampaignDetail({
         userName={userName}
         userPhotoURL={userPhotoURL || null}
         userProfiles={userProfiles || []}
+        onVote={(candidateId) => handleVote(undefined, candidateId)}
+        isCastingVote={isCastingVote}
       />
     );
   }
@@ -878,9 +891,22 @@ export default function CampaignDetail({
               </div>
 
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative z-10">
-                <div className="space-y-1 text-left pr-20 md:pr-24">
-                  <h1 className="font-display font-bold text-xl md:text-2xl text-slate-900 dark:text-white tracking-tight uppercase max-w-xl break-words">
+                <div 
+                  className={`space-y-1 text-left pr-20 md:pr-24 ${currentCampaign.domainType === "Locations (Places)" ? "cursor-pointer group" : ""}`}
+                  onClick={() => {
+                    if (currentCampaign.domainType === "Locations (Places)") {
+                      setShowLocationMap(true);
+                    }
+                  }}
+                >
+                  <h1 className={`font-display font-bold text-xl md:text-2xl text-slate-900 dark:text-white tracking-tight uppercase max-w-xl break-words flex items-center gap-2 ${currentCampaign.domainType === "Locations (Places)" ? "group-hover:text-amber-500 transition-colors" : ""}`}>
                     {cleanedDetailTitle}
+                    {currentCampaign.isVerified && (
+                      <BadgeCheck className="w-5 h-5 text-emerald-500 shrink-0" aria-label="Verified Location" />
+                    )}
+                    {currentCampaign.domainType === "Locations (Places)" && (
+                      <MapPin className="w-5 h-5 text-amber-500 opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
+                    )}
                   </h1>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-wider">
                     {currentCampaign.domainType || "KINGDOM"} • <strong className="text-slate-700 dark:text-slate-200">{activeCandidates.length}</strong> {activeCandidates.length === 1 ? "contender" : "contenders"}
@@ -1425,6 +1451,20 @@ export default function CampaignDetail({
           </div>
         )}
       </AnimatePresence>
+      
+      <AnimatePresence>
+        {showLocationMap && (
+          <LocationMapModal 
+            locationName={cleanedDetailTitle} 
+            onClose={() => setShowLocationMap(false)} 
+          />
+        )}
+      </AnimatePresence>
+
+      <PhoneVerificationPopup 
+        isOpen={showPhoneVerification} 
+        onClose={() => setShowPhoneVerification(false)} 
+      />
     </div>
   );
 }

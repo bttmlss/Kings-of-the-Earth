@@ -27,6 +27,7 @@ export interface Campaign {
   currentKingId?: string | null;
   totalVotes?: number;
   pendingTime?: "none" | "24hours" | "72hours" | "upon_approval";
+  isVerified?: boolean;
 }
 
 export interface Candidate {

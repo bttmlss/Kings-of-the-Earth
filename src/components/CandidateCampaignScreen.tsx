@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud } from "lucide-react";
+import { ArrowLeft, Users, UserPlus, Crown, ChevronDown, ChevronUp, CheckCircle, Edit3, Image as ImageIcon, X, AlertCircle, Loader2, UploadCloud, BadgeCheck } from "lucide-react";
 import { Campaign, Candidate } from "../types";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import { auth, db } from "../firebase";
@@ -17,6 +17,8 @@ interface CandidateCampaignScreenProps {
   userName: string;
   userPhotoURL: string | null;
   userProfiles: any[];
+  onVote?: (candidateId: string) => void;
+  isCastingVote?: string | null;
 }
 
 export default function CandidateCampaignScreen({
@@ -27,6 +29,8 @@ export default function CandidateCampaignScreen({
   userName,
   userPhotoURL,
   userProfiles,
+  onVote,
+  isCastingVote,
 }: CandidateCampaignScreenProps) {
   const [hasJoined, setHasJoined] = useState(false);
   const [showJoinToast, setShowJoinToast] = useState(false);
@@ -589,8 +593,13 @@ export default function CandidateCampaignScreen({
                         )}
                       </div>
                       <div className="text-center sm:text-left space-y-1 pt-2 sm:pt-4">
-                        <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
-                          {campaign.domainTitle}
+                        <div className="flex items-center justify-center sm:justify-start gap-1">
+                          <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                            {campaign.domainTitle}
+                          </div>
+                          {campaign.isVerified && (
+                            <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" aria-label="Verified Location" />
+                          )}
                         </div>
                         <hr className="border-slate-250 dark:border-slate-800 my-1.5 w-full max-w-xs mx-auto sm:mx-0" />
                         <h1 className="text-xl sm:text-2xl font-display font-black text-slate-900 dark:text-slate-100 leading-tight uppercase">
@@ -608,29 +617,39 @@ export default function CandidateCampaignScreen({
                       </div>
                     </div>
                     
-                    <div className="shrink-0 z-10 relative pt-2 sm:pt-4">
+                    <div className="shrink-0 z-10 relative pt-2 sm:pt-4 flex flex-col sm:flex-row items-center gap-2">
                       {userId !== candidate.userId && (
-                        <button
-                          onClick={handleJoin}
-                          disabled={hasJoined}
-                          className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
-                            hasJoined 
-                               ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
-                               : "bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 cursor-pointer active:scale-95"
-                          }`}
-                        >
-                          {hasJoined ? (
-                            <>
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              Requested
-                            </>
-                          ) : (
-                            <>
-                              <UserPlus className="w-3.5 h-3.5" />
-                              Join Campaign
-                            </>
-                          )}
-                        </button>
+                        <>
+                          <button
+                            onClick={handleJoin}
+                            disabled={hasJoined}
+                            className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
+                              hasJoined 
+                                 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
+                                 : "bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs cursor-pointer active:scale-95"
+                            }`}
+                          >
+                            {hasJoined ? (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Requested
+                              </>
+                            ) : (
+                              <>
+                                <UserPlus className="w-3.5 h-3.5" />
+                                Join Court
+                              </>
+                            )}
+                          </button>
+                          
+                          <button
+                            onClick={() => onVote && onVote(candidate.id)}
+                            disabled={isCastingVote === candidate.id}
+                            className="px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isCastingVote === candidate.id ? "VOTING..." : "VOTE"}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

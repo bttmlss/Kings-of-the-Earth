@@ -5,9 +5,9 @@
 
 import React, { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut, User, linkWithPhoneNumber, RecaptchaVerifier, ConfirmationResult } from "firebase/auth";
-import { collection, query, onSnapshot, where, orderBy, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, where, orderBy, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, collectionGroup } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "./firebase";
-import { Campaign } from "./types";
+import { Campaign, Candidate } from "./types";
 import { getCampaignCategory } from "./utils";
 import LoginScreen from "./components/LoginScreen";
 import CampaignCard from "./components/CampaignCard";
@@ -19,7 +19,7 @@ import LeaderboardScreen from "./components/LeaderboardScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import HomeFeed from "./components/HomeFeed";
 import { NotificationsScreen } from "./components/NotificationsScreen";
-import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw, CheckCircle } from "lucide-react";
+import { Crown, Sparkles, LogOut, Plus, Search, ShieldAlert, Award, Grid, HelpCircle, Trophy, User as UserIcon, Settings, Sun, Moon, Scale, FileText, ChevronRight, Home, Menu, Bell, RefreshCw, CheckCircle, BadgeCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PullToRefresh from "./components/PullToRefresh";
 import { useGlobalInvertedScroll } from "./hooks/useGlobalInvertedScroll";
@@ -32,6 +32,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"Cultures" | "locations" | "Objects" | "Actions" | "Miscellaneous" | "All" >("All");
   const [userProfiles, setUserProfiles] = useState<any[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
 
   const getCategoryCount = (cat: "Cultures" | "locations" | "Objects" | "Actions" | "Miscellaneous") => {
     return campaigns.filter(c => getCampaignCategory(c) === cat).length;
@@ -153,6 +154,8 @@ export default function App() {
   const [phoneLinkError, setPhoneLinkError] = useState<string | null>(null);
   const [phoneLinkSuccess, setPhoneLinkSuccess] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -292,6 +295,26 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Stream Unread Notifications
+  useEffect(() => {
+    if (!user?.uid) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+    const notifsRef = collection(db, "notifications");
+    const q = query(
+      notifsRef,
+      where("userId", "==", user.uid),
+      where("read", "==", false)
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setHasUnreadNotifications(!snap.empty);
+    }, (error) => {
+      console.error("Error loading unread notifications:", error);
+    });
+    return () => unsubscribe();
+  }, [user?.uid]);
+
   // Stream Live Campaigns
   useEffect(() => {
     if (!user) return;
@@ -326,16 +349,20 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // Fetch all user profiles for active search matching and cross-referencing (one-time fetch per mount to save heavy read costs)
+  // Fetch all user profiles and candidates for active search matching and cross-referencing (one-time fetch per mount to save heavy read costs)
   useEffect(() => {
     if (!user) return;
-    const fetchProfiles = async () => {
+    const fetchData = async () => {
       try {
-        const snapshot = await getDocs(collection(db, "user_profiles"));
-        const list: any[] = [];
-        snapshot.forEach((docSnap) => {
+        const [profilesSnap, candidatesSnap] = await Promise.all([
+          getDocs(collection(db, "user_profiles")),
+          getDocs(collectionGroup(db, "candidates"))
+        ]);
+
+        const profilesList: any[] = [];
+        profilesSnap.forEach((docSnap) => {
           const d = docSnap.data();
-          list.push({
+          profilesList.push({
             uid: docSnap.id,
             displayName: d.displayName || "Sovereign Lord",
             photoURL: d.photoURL || null,
@@ -343,12 +370,20 @@ export default function App() {
             isPrivate: !!d.isPrivate,
           });
         });
-        setUserProfiles(list);
+        setUserProfiles(profilesList);
+
+        const candidatesList: (Candidate & { campaignId: string })[] = [];
+        candidatesSnap.forEach((docSnap) => {
+          const cand = docSnap.data() as Candidate;
+          const campaignId = docSnap.ref.parent.parent?.id || "";
+          candidatesList.push({ ...cand, campaignId });
+        });
+        setAllCandidates(candidatesList as any);
       } catch (err) {
-        console.error("Error fetching user profiles:", err);
+        console.error("Error fetching search data:", err);
       }
     };
-    fetchProfiles();
+    fetchData();
   }, [user]);
 
   // Sync selected campaign if any live updates modify it (e.g. taken down by owner)
@@ -412,6 +447,15 @@ export default function App() {
         )
       : [];
   }, [searchQuery, user, userProfiles]);
+
+  // Filter candidates (user campaigns) based on search query
+  const filteredCandidates = React.useMemo(() => {
+    return searchQuery.trim() && user
+      ? allCandidates.filter((c) => 
+          (c.campaignTitle || "").toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : [];
+  }, [searchQuery, user, allCandidates]);
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -583,6 +627,7 @@ export default function App() {
               className="pb-20"
             >
               <ProfileScreen
+                key={viewedUser ? viewedUser.uid : user.uid}
                 user={viewedUser ? {
                   uid: viewedUser.uid,
                   displayName: viewedUser.displayName,
@@ -611,6 +656,7 @@ export default function App() {
                 onBack={() => setViewedUser(null)}
                 onEditingChange={setIsProfileEditing}
                 onOpenNotifications={() => setCurrentTab("notifications")}
+                hasUnreadNotifications={hasUnreadNotifications}
                 userProfiles={userProfiles}
                 onViewProfile={(targetedUser) => {
                   setViewedUser(targetedUser);
@@ -726,7 +772,7 @@ export default function App() {
                     <div className="flex flex-col gap-4">
                       {recentVisits.map((visit, idx) => {
                         if (visit.type === 'campaign') {
-                          const camp = campaigns.find(c => c.id === visit.id) || visit.metadata;
+                          const camp = campaigns.find(c => c.id === visit.id);
                           if (!camp) return null;
                           return (
                             <React.Fragment key={`recent-${visit.type}-${visit.id}`}>
@@ -738,7 +784,7 @@ export default function App() {
                             </React.Fragment>
                           );
                         } else {
-                          const p = userProfiles.find(u => u.uid === visit.id) || visit.metadata;
+                          const p = userProfiles.find(u => u.uid === visit.id);
                           if (!p) return null;
                           return (
                             <React.Fragment key={`recent-${visit.type}-${visit.id}`}>
@@ -789,13 +835,72 @@ export default function App() {
                   </div>
                 )}
 
+                {/* User Campaigns Section */}
+                {searchQuery.trim() !== "" && filteredCandidates.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest px-1">User Campaigns</h3>
+                    <div className="flex flex-col gap-4" id="candidate-grid">
+                      {filteredCandidates.map((cand: any, idx) => {
+                        const camp = campaigns.find(c => c.id === cand.campaignId);
+                        if (!camp) return null;
+                        return (
+                        <React.Fragment key={`${cand.userId}-${cand.campaignId}`}>
+                          <motion.div
+                            whileHover={{ y: -1, scale: 1.002, transition: { duration: 0.1 } }}
+                            onClick={() => {
+                              setFocusedCampaignUserId(cand.userId);
+                              setSelectedCampaign(camp);
+                            }}
+                            className="group relative bg-slate-100 dark:bg-slate-800/40 border border-slate-300 dark:border-slate-800 hover:border-amber-500/30 hover:bg-slate-200/65 dark:hover:bg-slate-800/70 rounded-xl p-3 sm:py-3 sm:px-4 shadow-xs transition-all overflow-hidden cursor-pointer flex items-center justify-between gap-4 w-full"
+                          >
+                            <div className="absolute left-0 inset-y-0 w-1 bg-amber-500/10 group-hover:bg-amber-500/50 transition-colors" />
+                            <div className="flex-1 min-w-0 pr-2 pl-1.5 flex items-center gap-3">
+                              {cand.photoURL ? (
+                                <img
+                                  src={cand.photoURL}
+                                  alt=""
+                                  className="w-10 h-10 rounded-xl object-cover border border-amber-500/20 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center border border-slate-300 dark:border-slate-700 shrink-0">
+                                  <Crown className="w-5 h-5 text-slate-500" />
+                                </div>
+                              )}
+                              <div>
+                                <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight leading-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
+                                  {cand.campaignTitle || cand.displayName}
+                                </h3>
+                                <div className="text-xs text-slate-500 mt-0.5 truncate flex items-center gap-1">
+                                  <span>Domain: {camp.domainTitle}</span>
+                                  {camp.isVerified && <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-1.5 select-none mt-1">
+                              <span className="text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-amber-500 transition-colors hidden sm:inline">
+                                VIEW
+                              </span>
+                              <div className="w-6.5 h-6.5 rounded-md bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 group-hover:border-amber-500/30 group-hover:bg-amber-500/5 group-hover:text-amber-500 transition-all duration-150">
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </div>
+                            </div>
+                          </motion.div>
+                          {idx !== filteredCandidates.length - 1 && (
+                            <hr className="border-t border-slate-200 dark:border-slate-800/80 my-1 w-full" />
+                          )}
+                        </React.Fragment>
+                      )})}
+                    </div>
+                  </div>
+                )}
+
                 {/* Domains / Campaigns Section */}
                 {displayedCampaigns.length === 0 ? (
-                  searchQuery.trim() !== "" && filteredProfiles.length === 0 ? (
+                  searchQuery.trim() !== "" && filteredProfiles.length === 0 && filteredCandidates.length === 0 ? (
                     <div className="p-16 text-center bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl flex flex-col justify-center items-center gap-3 shadow-sm max-w-lg mx-auto" id="empty-search">
                        <HelpCircle className="w-10 h-10 text-slate-300 dark:text-slate-600" />
                       <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">
-                        No matching domains or profiles found.
+                        No matching domains, profiles, or user campaigns found.
                       </div>
                     </div>
                   ) : null
@@ -1035,9 +1140,14 @@ export default function App() {
                     setIsSidePanelOpen(false);
                     setCurrentTab("notifications");
                   }}
-                  className="flex items-center gap-3 w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors"
+                  className="flex items-center gap-3 w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors relative"
                 >
-                  <Bell className="w-5 h-5 text-amber-500" />
+                  <div className="relative">
+                    <Bell className="w-5 h-5 text-amber-500" />
+                    {hasUnreadNotifications && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
+                    )}
+                  </div>
                   <span className="font-bold text-slate-700 dark:text-slate-300">Notifications</span>
                 </button>
                 <button
@@ -1050,6 +1160,18 @@ export default function App() {
                   <Settings className="w-5 h-5 text-slate-500" />
                   <span className="font-bold text-slate-700 dark:text-slate-300">Settings</span>
                 </button>
+                {user && (!user.phoneNumber && !user.providerData.some(p => p.providerId === 'phone')) && (
+                  <button
+                    onClick={() => {
+                      setIsSidePanelOpen(false);
+                      setIsSettingsOpen(true);
+                    }}
+                    className="flex items-center gap-3 w-full p-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-left transition-colors mt-2"
+                  >
+                    <ShieldAlert className="w-5 h-5 text-amber-500" />
+                    <span className="font-bold text-amber-600 dark:text-amber-400">Verify account to vote</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

@@ -1,9 +1,129 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
-import { Sparkles, X, ChevronRight, CheckCircle2, ShieldAlert, Award } from "lucide-react";
+import { Sparkles, X, ChevronRight, CheckCircle2, ShieldAlert, Award, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Campaign } from "../types";
+import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps';
+
+const API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
+const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+
+function LocationAutocompleteInput({ 
+  prefix, 
+  onPrefixChange,
+  value, 
+  onChange, 
+  disabled 
+}: { 
+  prefix: string;
+  onPrefixChange: (val: "King of" | "Queen of") => void;
+  value: string; 
+  onChange: (val: string) => void;
+  disabled: boolean;
+}) {
+  const placesLib = useMapsLibrary('places');
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!placesLib || !value.trim()) {
+      setPredictions([]);
+      return;
+    }
+    
+    let isActive = true;
+    const fetchSuggestions = async () => {
+      try {
+        const { suggestions } = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: value });
+        if (isActive && suggestions) {
+          setPredictions(suggestions.map((s: any) => s.placePrediction).filter(Boolean));
+        }
+      } catch (err) {
+        if (isActive) setPredictions([]);
+      }
+    };
+    
+    fetchSuggestions();
+    
+    return () => { isActive = false; };
+  }, [value, placesLib]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full flex rounded-xl border border-slate-200 dark:border-slate-700 focus-within:border-amber-500 focus-within:ring-4 focus-within:ring-amber-500/10 transition-all bg-white dark:bg-slate-900" ref={wrapperRef}>
+      <select
+        value={prefix}
+        onChange={(e) => onPrefixChange(e.target.value as any)}
+        className="bg-slate-50 dark:bg-slate-800/80 border-r border-slate-200 dark:border-slate-700 py-3.5 pl-4 pr-3 text-sm font-semibold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors rounded-l-xl"
+      >
+        <option value="King of">King of...</option>
+        <option value="Queen of">Queen of...</option>
+      </select>
+      <input
+        type="text"
+        placeholder="e.g. Tokyo, New York, The Moon"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        disabled={disabled}
+        className="w-full px-4 py-3.5 bg-transparent text-sm focus:outline-none font-semibold text-slate-800 dark:text-slate-100 rounded-r-xl"
+      />
+      
+      <AnimatePresence>
+        {isOpen && predictions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden z-50 divide-y divide-slate-100 dark:divide-slate-800/50"
+          >
+            {predictions.map((p) => {
+              const mainStr = p.mainText?.text || p.text?.text || "";
+              const secStr = p.secondaryText?.text || "";
+              const fullStr = p.text?.text || mainStr;
+              
+              return (
+              <div
+                key={p.placeId}
+                onClick={() => {
+                  onChange(fullStr);
+                  setIsOpen(false);
+                }}
+                className="px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer flex items-center gap-2.5 transition-colors"
+              >
+                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                  <MapPin className="w-3 h-3 text-amber-500" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{mainStr}</div>
+                  {secStr && <div className="text-[10px] text-slate-500 truncate">{secStr}</div>}
+                </div>
+              </div>
+            )})}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 interface CreateCampaignModalProps {
   userId: string;
@@ -33,6 +153,8 @@ export default function CreateCampaignModal({
   onClose,
   onSuccess,
 }: CreateCampaignModalProps) {
+  const [isRulesExpanded, setIsRulesExpanded] = useState(false);
+  const [campaignMode, setCampaignMode] = useState<"general" | "location">("general");
   const [prefix, setPrefix] = useState<"King of" | "Queen of">("King of");
   const [domainPayload, setDomainPayload] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +196,13 @@ export default function CreateCampaignModal({
       return;
     }
 
+    if (campaignMode === "location") {
+      setIsValidated(true);
+      setDomainType("Locations (Places)");
+      setAiAnalysis(`Location verified: Classified as "Locations (Places)". Safe for public coronation.`);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setAiAnalysis(null);
@@ -83,7 +212,7 @@ export default function CreateCampaignModal({
       const response = await fetch("/api/validate-domain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domainTitle: title }),
+        body: JSON.stringify({ domainTitle: title, campaignMode }),
       });
 
       if (!response.ok) {
@@ -132,7 +261,8 @@ export default function CreateCampaignModal({
           domainType,
           slug,
           prefix,
-          pendingTime
+          pendingTime,
+          isVerified: campaignMode === "location"
         })
       });
 
@@ -150,6 +280,7 @@ export default function CreateCampaignModal({
         status: "live",
         domainType: (domainType as any) || "Miscellaneous",
         pendingTime: pendingTime,
+        isVerified: campaignMode === "location"
       };
 
       onSuccess(newCampaign);
@@ -161,7 +292,7 @@ export default function CreateCampaignModal({
     }
   };
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -177,7 +308,7 @@ export default function CreateCampaignModal({
             </div>
             <div>
               <h2 className="font-display font-medium text-lg text-slate-800 dark:text-slate-100">
-                Found a New Sovereign Campaign
+                Create Campaign
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-300">Claims must abide by grammatical laws</p>
             </div>
@@ -192,84 +323,128 @@ export default function CreateCampaignModal({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 flex-grow overflow-y-auto">
           {/* Rules Reminder Banner */}
-          <div className="p-4 rounded-xl bg-slate-300/40 dark:bg-slate-800/40 border border-slate-400 dark:border-slate-500 text-xs text-slate-600 dark:text-slate-300 space-y-2">
-            <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wide">
-              👑 Royal Ledger Grammar Laws:
-            </div>
-            <ul className="list-disc pl-4 space-y-1">
-              <li>Must strictly belong to one of four domain categories:</li>
-              <li><span className="font-semibold text-slate-700 dark:text-slate-300">Persons (Cultures)</span>: Groups or professions (e.g. "developers", "Vikings") but NOT individual proper names (e.g. "Sarah", "Mike").</li>
-              <li><span className="font-semibold text-slate-700 dark:text-slate-300">Places (locations)</span>: Real-world, geographic locations verified by AI.</li>
-              <li><span className="font-semibold text-slate-700 dark:text-slate-300">Thing (Objects)</span>: Plural standard collection nouns (e.g. "keyboards", "kittens").</li>
-              <li><span className="font-semibold text-slate-700 dark:text-slate-300">Verbs (Actions)</span>: Action nouns ending in <span className="font-semibold text-slate-700 dark:text-slate-300">"-ing"</span> (e.g. "coding", "singing").</li>
-            </ul>
+          <div className="rounded-xl bg-slate-300/40 dark:bg-slate-800/40 border border-slate-400 dark:border-slate-500 overflow-hidden text-xs text-slate-600 dark:text-slate-300">
+            <button
+              type="button"
+              onClick={() => setIsRulesExpanded(!isRulesExpanded)}
+              className="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-slate-300/60 dark:hover:bg-slate-800/60 transition-colors"
+            >
+              <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wide">
+                👑 Royal Ledger Grammar Laws
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${isRulesExpanded ? "rotate-90" : ""}`} />
+            </button>
+            <AnimatePresence>
+              {isRulesExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-4 pb-4 overflow-hidden"
+                >
+                  <ul className="list-disc pl-4 space-y-1 mt-1">
+                    <li>Must strictly belong to one of four domain categories:</li>
+                    <li><span className="font-semibold text-slate-700 dark:text-slate-300">Persons (Cultures)</span>: Groups or professions (e.g. "developers", "Vikings") but NOT individual proper names (e.g. "Sarah", "Mike").</li>
+                    <li><span className="font-semibold text-slate-700 dark:text-slate-300">Places (locations)</span>: Real-world, geographic locations verified by AI.</li>
+                    <li><span className="font-semibold text-slate-700 dark:text-slate-300">Thing (Objects)</span>: Plural standard collection nouns (e.g. "keyboards", "kittens").</li>
+                    <li><span className="font-semibold text-slate-700 dark:text-slate-300">Verbs (Actions)</span>: Action nouns ending in <span className="font-semibold text-slate-700 dark:text-slate-300">"-ing"</span> (e.g. "coding", "singing").</li>
+                  </ul>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Selection of prefix */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-widest">
-              Choose Royal Title Prefix
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setPrefix("King of");
-                  setIsValidated(false);
-                }}
-                className={`py-3 px-4 rounded-xl text-sm font-semibold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  prefix === "King of"
-                    ? "bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/10"
-                    : "bg-slate-200/60 dark:bg-slate-900/45 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300/40"
-                }`}
-              >
-                🤴 King of
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPrefix("Queen of");
-                  setIsValidated(false);
-                }}
-                className={`py-3 px-4 rounded-xl text-sm font-semibold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  prefix === "Queen of"
-                    ? "bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/10"
-                    : "bg-slate-200/60 dark:bg-slate-900/45 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300/40"
-                }`}
-              >
-                👸 Queen of
-              </button>
-            </div>
+          {/* Campaign Mode Tabs */}
+          <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setCampaignMode("general");
+                setDomainPayload("");
+                setIsValidated(false);
+              }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                campaignMode === "general" 
+                  ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100" 
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              General Based
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCampaignMode("location");
+                setDomainPayload("");
+                setIsValidated(false);
+                setDomainType("Locations (Places)");
+              }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                campaignMode === "location" 
+                  ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100" 
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              Location Based
+            </button>
           </div>
 
           {/* Domain text payload */}
-          <div className="space-y-2 col-span-2">
+          <div className="space-y-2 col-span-2 mt-4">
             <div className="flex items-center justify-between">
               <label htmlFor="domainName" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest">
                 Enter Domain
               </label>
             </div>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400 select-none">
-                {prefix}...
-              </span>
-              <input
-                id="domainName"
-                type="text"
-                placeholder={`e.g. ${currentExample.text}`}
+            
+            {campaignMode === "general" ? (
+              <div className="relative w-full flex rounded-xl border border-slate-200 dark:border-slate-700 focus-within:border-amber-500 focus-within:ring-4 focus-within:ring-amber-500/10 transition-all bg-white dark:bg-slate-900">
+                <select
+                  value={prefix}
+                  onChange={(e) => {
+                    setPrefix(e.target.value as "King of" | "Queen of");
+                    setIsValidated(false);
+                  }}
+                  className="bg-slate-50 dark:bg-slate-800/80 border-r border-slate-200 dark:border-slate-700 py-3.5 pl-4 pr-3 text-sm font-semibold text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors rounded-l-xl"
+                >
+                  <option value="King of">King of...</option>
+                  <option value="Queen of">Queen of...</option>
+                </select>
+                <input
+                  id="domainName"
+                  type="text"
+                  placeholder={`e.g. ${currentExample.text}`}
+                  value={domainPayload}
+                  onChange={(e) => {
+                    setDomainPayload(e.target.value);
+                    setIsValidated(false);
+                    setError(null);
+                    setAiAnalysis(null);
+                  }}
+                  disabled={isLoading}
+                  className="w-full px-4 py-3.5 bg-transparent text-sm focus:outline-none font-semibold text-slate-800 dark:text-slate-100 rounded-r-xl"
+                />
+              </div>
+            ) : (
+              <LocationAutocompleteInput
+                prefix={prefix}
+                onPrefixChange={(val) => {
+                  setPrefix(val);
+                  setIsValidated(false);
+                }}
                 value={domainPayload}
-                onChange={(e) => {
-                  setDomainPayload(e.target.value);
+                onChange={(val) => {
+                  setDomainPayload(val);
                   setIsValidated(false);
                   setError(null);
                   setAiAnalysis(null);
                 }}
                 disabled={isLoading}
-                className="w-full pl-[5.5rem] pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-semibold text-slate-800"
               />
-            </div>
+            )}
+            
             <p className="text-[11px] text-slate-400 italic">
-              Example: <span className="font-semibold text-slate-600">{prefix} {domainPayload || currentExample.text}</span>
+              Example: <span className="font-semibold text-slate-600">{prefix} {domainPayload || (campaignMode === "location" ? "Tokyo" : currentExample.text)}</span>
             </p>
           </div>
 
@@ -339,7 +514,7 @@ export default function CreateCampaignModal({
                 disabled={isLoading || !domainPayload.trim()}
                 className="px-5 py-3 rounded-xl bg-slate-900 text-white font-semibold text-xs flex items-center gap-1.5 hover:bg-slate-800 transition-all disabled:opacity-40 cursor-pointer"
               >
-                {isLoading ? "Auditing Grammar..." : "Run AI Grammar Audit"}
+                {isLoading ? "Auditing..." : (campaignMode === "location" ? "Verify Location" : "Run AI Grammar Audit")}
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             ) : (
@@ -357,5 +532,13 @@ export default function CreateCampaignModal({
         </form>
       </motion.div>
     </div>
+  );
+
+  return hasValidKey ? (
+    <APIProvider apiKey={API_KEY}>
+      {modalContent}
+    </APIProvider>
+  ) : (
+    modalContent
   );
 }

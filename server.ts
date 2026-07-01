@@ -667,7 +667,7 @@ async function startServer() {
       const decodedToken = await getAuth().verifyIdToken(token);
       const userId = decodedToken.uid;
 
-      let { domainTitle, domainType, slug, prefix, pendingTime } = req.body;
+      let { domainTitle, domainType, slug, prefix, pendingTime, isVerified } = req.body;
       if (!domainTitle || !domainType || !slug) {
         return res.status(400).json({ error: "Missing required fields" });
       }
@@ -711,6 +711,7 @@ async function startServer() {
             domainType: domainType || "Miscellaneous",
             totalVotes: 0,
             pendingTime: pendingTime || "24hours",
+            isVerified: !!isVerified,
           });
 
           // initial empty candle - write directly to avoid runtime gets after sets
@@ -1516,11 +1517,10 @@ app.post("/api/log-post-interaction", async (req, res, next) => {
       next(err);
     }
   });
-
   // API Route - validation
   app.post("/api/validate-domain", geminiLimiter, async (req, res, next) => {
     try {
-      const { domainTitle } = req.body;
+      const { domainTitle, campaignMode } = req.body;
       if (!domainTitle || typeof domainTitle !== "string") {
         return res.status(400).json({ isValid: false, reason: "Invalid domain title provided." });
       }
@@ -1547,13 +1547,13 @@ app.post("/api/log-post-interaction", async (req, res, next) => {
         return res.json({ isValid: false, reason: "Validation blocked: Content blocked by profanity filter." });
       }
 
-      const cacheKey = suffixLower;
+      const cacheKey = suffixLower + (campaignMode ? `-${campaignMode}` : "");
       const cached = validationCache.get(cacheKey);
       if (cached && cached.expiry > Date.now()) {
         return res.json(cached.result);
       }
 
-      const prompt = `You are a highly encouraging, friendly validation helper for a custom campaign and sovereign domain game.
+      let prompt = `You are a highly encouraging, friendly validation helper for a custom campaign and sovereign domain game.
 The proposed domain suffix is: "${suffix}".
 The prefix of the title is "King of" or "Queen of", making the full title: "${trimmedTitle}".
 
@@ -1563,21 +1563,27 @@ CRITICAL: Be extremely permissive and generous! The goal is to let users create 
 
 CATEGORIES:
 1. "Cultures" (persons): Cultures, communities, professions, factions, or groups of people (e.g. "developers", "gamers", "hackers", "sailors", "Vikings", "cats", "rabbits"). If they enter a group, community, or tribe, select this.
-2. "locations" (places): Cities, nations, fictional places, fantasy worlds, planets, regions, or physical spaces (e.g. "Tokyo", "Mars", "Narnia", "Wakanda", "Atlantis", "Metropolis"). If it is any place, real or imaginary, select this.
+2. "locations" (places): Cities, nations, fictional places, fantasy worlds, planets, regions, or physical spaces (e.g. "Mars", "Narnia", "Wakanda", "Atlantis", "Metropolis"). If it is any place, real or imaginary, select this.
 3. "Objects" (thing): Nouns representing categories, items, concepts, or animals (e.g. "keyboards", "kittens", "computers", "cars", "guitars"). If it is an object, substance, or entity (singular or plural), select this.
 4. "Actions" (verbs): Actions, verbs, or processes (e.g. "coding", "singing", "hacking", "running"). If it describes doing something, active verbs, or a behavior, select this.
 
-APPROVAL GUIDELINE:
-Unless the name contains explicit profanity, vulgarity, or random meaningless keysmashes (e.g. "asdfasdfasdf"), you MUST approve it (isValid: true).
-If they enter something like a proper name, fictional world, singular noun, or adjective, map it creatively (e.g. singular "keyboard" is approved as "Objects"; fictional "Wakanda" is approved as "locations"; a name like "Sarah" is approved as "Cultures" (house of Sarah) or a custom domain). 
+`;
+
+      if (campaignMode === "general") {
+        prompt += `CRITICAL CONSTRAINT FOR GENERAL CATEGORY: The user submitted this under the "General" category. If the domain "${suffix}" refers to a REAL-WORLD geographic location, city, state, country, or physical address that could be searched on a map (e.g. "Tokyo", "Florida", "New York", "London", "Paris", "Texas"), you MUST mark it as INVALID (isValid: false) and provide the reason: "Real-world locations must be created using the Location-Based tab." Fictional places or non-mappable geographic concepts (like "Mars" or "Narnia") are still perfectly valid under "locations". YOU MUST OBEY THIS RULE EVEN IF THE WORD MIGHT ALSO HAVE ANOTHER MEANING.\n\n`;
+      }
+
+      prompt += `APPROVAL GUIDELINE:
+Unless the name contains explicit profanity, vulgarity, or random meaningless keysmashes (e.g. "asdfasdfasdf") OR it violates the critical constraint above regarding real-world locations, you MUST approve it (isValid: true).
+If they enter something like a proper name, fictional world, singular noun, or adjective, map it creatively.
 
 Please return:
-- isValid: true
+- isValid: boolean
 - domainType: "Cultures", "locations", "Objects", or "Actions" (based on your creative categorization)
-- reason: An encouraging/epic royal validation message confirming their domain title (e.g., "The royal scribes have validated the legendary realm of ${suffix}!").`;
+- reason: An encouraging/epic royal validation message confirming their domain title (e.g., "The royal scribes have validated the legendary realm of ${suffix}!"), or the rejection reason if invalid.`;
 
       const response = await getGeminiClient().models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
@@ -1615,7 +1621,9 @@ Please return:
       return res.json(parsed);
     } catch (error: any) {
       // Graceful offline fallback logging to avoid raw trace pollution in the server stdout
-      console.log("Validation requested: Local heuristics fallback active.");
+      if (error?.status !== 'RESOURCE_EXHAUSTED' && !error?.message?.includes('429')) {
+        console.log("Validation requested: Local heuristics fallback active. Error:", error.message || error);
+      }
       
       const originalTitle = req.body.domainTitle ? req.body.domainTitle.trim() : "";
       const trimmedTitle = originalTitle.toLowerCase();
@@ -1693,13 +1701,21 @@ Please return:
       const commonPlaces = [
         "london", "tokyo", "paris", "york", "california", "texas", "japan", "asia", "america", "boston", "india", "berlin", "rome", 
         "eiffel tower", "grand canyon", "mars", "dallas", "athens", "vegas", "chicago", "canada", "mexico", "france", "germany",
-        "egypt", "brazil", "australia", "china", "sahara", "antarctica", "sydney", "toronto", "new york", "seattle"
+        "egypt", "brazil", "australia", "china", "sahara", "antarctica", "sydney", "toronto", "new york", "seattle", "florida",
+        "miami", "orlando", "los angeles", "san francisco", "washington", "houston", "atlanta", "madrid", "italy", "spain"
       ];
       
       const firstChar = suffix.charAt(0);
       const isCapitalized = firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase();
 
       if (commonPlaces.includes(suffixLower) || isCapitalized) {
+        if (req.body.campaignMode === "general" && commonPlaces.includes(suffixLower) && suffixLower !== "mars" && suffixLower !== "narnia") {
+          return res.json({ 
+            isValid: false, 
+            domainType: "Miscellaneous", 
+            reason: "Real-world locations must be created using the Location-Based tab." 
+          });
+        }
         return res.json({ 
           isValid: true, 
           domainType: "locations", 

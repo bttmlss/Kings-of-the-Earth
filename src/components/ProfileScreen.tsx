@@ -5,7 +5,7 @@ import { updateProfile } from "firebase/auth";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Candidate } from "../types";
 import { motion, AnimatePresence } from "motion/react";
-import { ShieldCheck, UserCircle, Award, Landmark, Crown, RefreshCw, Layers, ShieldAlert, Sparkles, LogOut, CheckCircle, ChevronRight, ChevronDown, ChevronUp, Edit3, Lock, Camera, Check, TrendingUp, Activity, Globe, ArrowLeft, Image as ImageIcon, Bell } from "lucide-react";
+import { ShieldCheck, UserCircle, Award, Landmark, Crown, RefreshCw, Layers, ShieldAlert, Sparkles, LogOut, CheckCircle, ChevronRight, ChevronDown, ChevronUp, Edit3, Lock, Camera, Check, TrendingUp, Activity, Globe, ArrowLeft, Image as ImageIcon, Bell, BadgeCheck } from "lucide-react";
 import { useVotingIndex } from "../hooks/useVotingIndex";
 import VotingIndexChart from "./VotingIndexChart";
 import LeaderboardScreen from "./LeaderboardScreen";
@@ -30,6 +30,7 @@ interface ProfileScreenProps {
   onBack?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
   onOpenNotifications?: () => void;
+  hasUnreadNotifications?: boolean;
   userProfiles?: any[];
   onViewProfile?: (user: { uid: string; displayName: string | null; photoURL?: string | null }) => void;
 }
@@ -53,6 +54,7 @@ export default function ProfileScreen({
   onBack,
   onEditingChange,
   onOpenNotifications,
+  hasUnreadNotifications,
   userProfiles = [],
   onViewProfile
 }: ProfileScreenProps) {
@@ -206,6 +208,10 @@ export default function ProfileScreen({
   useEffect(() => {
     async function loadBio() {
       if (!user.uid) return;
+      
+      // Clear previous bio to prevent showing old data during load
+      setBio("");
+      setEditBio("");
       
       // Log profile visit
       if (user.uid && user.uid !== auth.currentUser?.uid) {
@@ -728,7 +734,12 @@ export default function ProfileScreen({
               onClick={onOpenNotifications}
               className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 font-extrabold text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm relative"
             >
-              <Bell className="w-3.5 h-3.5" />
+              <div className="relative">
+                <Bell className="w-3.5 h-3.5" />
+                {hasUnreadNotifications && (
+                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
+                )}
+              </div>
               Notifications
             </button>
           )}
@@ -815,8 +826,9 @@ export default function ProfileScreen({
                             </div>
 
                             <div className="text-left leading-none">
-                              <span className="text-[7px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block mb-0.5 truncate">
-                                {cleanTitle}
+                              <span className="text-[7px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-0.5 truncate flex items-center gap-0.5">
+                                <span className="truncate">{cleanTitle}</span>
+                                {actualCamp.isVerified && <BadgeCheck className="w-2.5 h-2.5 text-emerald-500 shrink-0" />}
                               </span>
                               <h4 className="font-display font-black text-[#0f172a] dark:text-slate-100 text-[8.5px] leading-tight uppercase group-hover:text-[#b45309] dark:group-hover:text-amber-500 transition-colors line-clamp-1">
                                 {stats?.campaignTitle || `${user.displayName}'s Campaign`}
@@ -1441,8 +1453,9 @@ export default function ProfileScreen({
                                 className="w-[180px] sm:w-[200px] shrink-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-750 p-3 rounded-2xl space-y-2 shadow-xs hover:shadow-md transition-all hover:scale-[1.01] hover:border-amber-400 dark:hover:border-amber-500 cursor-pointer flex flex-col justify-between h-[115px] relative overflow-hidden group"
                               >
                                 <div className="space-y-1 text-left relative z-10">
-                                  <span className="text-[8px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate max-w-[150px]">
-                                    {cleanTitle}
+                                  <span className="text-[8px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate max-w-[150px] flex items-center gap-0.5">
+                                    <span className="truncate">{cleanTitle}</span>
+                                    {actualCamp.isVerified && <BadgeCheck className="w-3 h-3 text-emerald-500 shrink-0" />}
                                   </span>
                                   <h4 className="font-display font-black text-slate-800 dark:text-slate-100 text-[10px] leading-tight uppercase group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-2">
                                     {stats?.campaignTitle || `${user.displayName}'s Campaign`}

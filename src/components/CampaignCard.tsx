@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { Users, ArrowUpRight } from "lucide-react";
+import { Users, ArrowUpRight, BadgeCheck } from "lucide-react";
 import { Campaign, Candidate } from "../types";
 import { motion } from "motion/react";
 
@@ -56,8 +56,11 @@ export default function CampaignCard({ campaign, onEnter }: CampaignCardProps) {
         )}
         
         {/* Campaign Domain Name */}
-        <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight leading-tight mt-1 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
-          {campaign.domainTitle}
+        <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight leading-tight mt-1 flex items-center gap-1.5 truncate">
+          <span className="truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">{campaign.domainTitle}</span>
+          {campaign.isVerified && (
+            <BadgeCheck className="w-4 h-4 text-emerald-500 shrink-0" aria-label="Verified Location" />
+          )}
         </h3>
 
         {/* Amount of contenders */}
