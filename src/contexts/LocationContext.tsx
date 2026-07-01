@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 interface LocationContextType {
   currentCity: string | null;
+  validLocations: string[];
   latitude: number | null;
   longitude: number | null;
   lastPingAt: Date | null;
@@ -11,6 +12,7 @@ interface LocationContextType {
 
 const LocationContext = createContext<LocationContextType>({
   currentCity: null,
+  validLocations: [],
   latitude: null,
   longitude: null,
   lastPingAt: null,
@@ -20,6 +22,7 @@ const LocationContext = createContext<LocationContextType>({
 
 export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [currentCity, setCurrentCity] = useState<string | null>(null);
+  const [validLocations, setValidLocations] = useState<string[]>([]);
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [lastPingAt, setLastPingAt] = useState<Date | null>(null);
@@ -31,13 +34,24 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setLongitude(lon);
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
       const data = await res.json();
-      const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county || data.address?.state;
-      if (city) {
-        setCurrentCity(city.toLowerCase());
-        setLastPingAt(new Date());
-        setPingError(null);
+      const addr = data.address;
+      
+      if (addr) {
+        const city = addr.city || addr.town || addr.village || addr.county || addr.state;
+        const locations = [
+          addr.city, addr.town, addr.village, addr.county, addr.state, addr.country
+        ].filter(Boolean).map((s: string) => s.toLowerCase());
+
+        if (city) {
+          setCurrentCity(city.toLowerCase());
+          setValidLocations(locations);
+          setLastPingAt(new Date());
+          setPingError(null);
+        } else {
+          setPingError("Could not determine city from coordinates.");
+        }
       } else {
-        setPingError("Could not determine city from coordinates.");
+        setPingError("Could not determine location from coordinates.");
       }
     } catch (err) {
       setPingError("Failed to reverse geocode location.");
@@ -85,7 +99,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <LocationContext.Provider value={{ currentCity, latitude, longitude, lastPingAt, pingError, forcePing }}>
+    <LocationContext.Provider value={{ currentCity, validLocations, latitude, longitude, lastPingAt, pingError, forcePing }}>
       {children}
     </LocationContext.Provider>
   );

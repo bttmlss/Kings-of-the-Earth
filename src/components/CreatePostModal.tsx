@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { User } from "firebase/auth";
 import { motion } from "motion/react";
 import { X, Send, Loader2 } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
 import { Campaign } from "../types";
 
 interface CreatePostModalProps {
@@ -18,7 +19,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
   const [imageUrl, setImageUrl] = useState("");
   const [selectedCampaignId, setSelectedCampaignId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
 
   const [userCampaigns, setUserCampaigns] = useState<{ id: string; campaignTitle: string; isOwned: boolean }[]>([]);
   const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(true);
@@ -73,18 +74,17 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!caption.trim() || !selectedCampaignId) {
-      setError("Please provide a caption and select a campaign.");
+      showError("Please provide a caption and select a campaign.");
       return;
     }
 
     const selectedCampaign = userCampaigns.find(c => c.id === selectedCampaignId);
     if (!selectedCampaign) {
-      setError("Invalid campaign selected.");
+      showError("Invalid campaign selected.");
       return;
     }
 
     setIsSubmitting(true);
-    setError(null);
 
     try {
       const newPost = {
@@ -103,7 +103,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
       onSuccess();
     } catch (err) {
       console.error("Error creating post:", err);
-      setError("Failed to create post.");
+      showError("Failed to create post.");
     } finally {
       setIsSubmitting(false);
     }
@@ -127,11 +127,6 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4 overflow-y-auto">
-          {error && (
-            <div className="p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 text-sm font-medium border border-red-200 dark:border-red-800">
-              {error}
-            </div>
-          )}
 
           {isLoadingCampaigns ? (
             <div className="p-8 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 gap-2">
@@ -175,7 +170,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
                           setImageUrl(b64);
                         } catch (err) {
                           console.error("Failed to resize image:", err);
-                          setError("Failed to process image.");
+                          showError("Failed to process image.");
                         }
                       }
                     }}

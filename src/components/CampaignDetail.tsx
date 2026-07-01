@@ -19,6 +19,7 @@ import { Crown, Users, ArrowLeft, Plus, Sparkles, AlertCircle, CircleUser, Vote,
 import { Campaign, Candidate, VoteLog } from "../types";
 import { getCampaignCategory } from "../utils";
 import { useLocationPing } from "../contexts/LocationContext";
+import { useToast } from "../contexts/ToastContext";
 import { motion, AnimatePresence } from "motion/react";
 import PhoneVerificationPopup from "./PhoneVerificationPopup";
 import KingdomCourtBuilder from "./KingdomCourtBuilder";
@@ -114,14 +115,14 @@ export default function CampaignDetail({
   onSelectCampaign,
   initialSelectedCandidateUserId,
 }: CampaignDetailProps) {
-  const { currentCity, latitude, longitude, lastPingAt, pingError, forcePing } = useLocationPing();
+  const { currentCity, validLocations, latitude, longitude, lastPingAt, pingError, forcePing } = useLocationPing();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [isCandidatesLoading, setIsCandidatesLoading] = useState(true);
   const [userJoined, setUserJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isCastingVote, setIsCastingVote] = useState<string | null>(null);
   const [floatingEffects, setFloatingEffects] = useState<FloatingEffect[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
   const [hasVoted, setHasVoted] = useState(false);
   const [votedCandidateId, setVotedCandidateId] = useState<string | null>(null);
   const [selectedBallotCandidate, setSelectedBallotCandidate] = useState<string>("");
@@ -220,7 +221,7 @@ export default function CampaignDetail({
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to approve claimant.");
+      showError(err.message || "Failed to approve claimant.");
     } finally {
       setIsApproving(null);
     }
@@ -255,7 +256,7 @@ export default function CampaignDetail({
       setIsEditSettingsOpen(false);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to save campaign settings.");
+      showError(err.message || "Failed to save campaign settings.");
     } finally {
       setIsSavingSettings(false);
     }
@@ -369,7 +370,7 @@ export default function CampaignDetail({
       }
     } catch (err: any) {
       console.error("Failed to leave campaign:", err);
-      setError("Failed to forfeit your position in this campaign. Please try again.");
+      showError("Failed to forfeit your position in this campaign. Please try again.");
     } finally {
       setIsLeaving(false);
     }
@@ -444,6 +445,9 @@ export default function CampaignDetail({
 
   // Monitor live streaming of candidates in this campaign
   useEffect(() => {
+    setUserJoined(false);
+    setIsCandidatesLoading(true);
+
     const candidatesColRef = collection(db, "campaigns", campaign.id, "candidates");
     const q = query(candidatesColRef, orderBy("voteCount", "desc"));
 
@@ -513,7 +517,7 @@ export default function CampaignDetail({
       }
     } catch (err: any) {
       console.error("Join campaign error:", err);
-      setError(err.message || "An unexpected error occurred while placing your candidacy.");
+      showError(err.message || "An unexpected error occurred while placing your candidacy.");
     } finally {
       setIsJoining(false);
     }
@@ -522,17 +526,9 @@ export default function CampaignDetail({
   // Continuous incremental voting
   const handleVote = async (e?: React.MouseEvent<HTMLButtonElement>, candidateId?: string) => {
     if (e) e.stopPropagation();
-    setError(null);
-
-    // Require phone verification to vote
-    if (auth.currentUser && !auth.currentUser.phoneNumber && !auth.currentUser.providerData.some(p => p.providerId === 'phone')) {
-      setShowPhoneVerification(true);
-      return;
-    }
-
     const isFrozen = campaign.isFrozen;
     if (isFrozen) {
-      setError("This campaign's votes are currently frozen. Casting new votes is disabled.");
+      showError("This campaign's votes are currently frozen. Casting new votes is disabled.");
       return;
     }
 
@@ -543,36 +539,40 @@ export default function CampaignDetail({
 
       if (!isPingRecent || pingError) {
         forcePing();
-        setError(pingError || "You must be pinged in this location within the last hour to vote! Attempting to ping your GPS now...");
+        showError(pingError || "You must be pinged in this location within the last hour to vote! Attempting to ping your GPS now...");
         return;
       }
 
       if (!currentCity) {
-        setError("Your GPS location could not be determined. Please ensure location services are allowed.");
+        showError("Your GPS location could not be determined. Please ensure location services are allowed.");
         return;
       }
 
       const campaignTitle = (campaign.domainTitle || "").toLowerCase();
-      // Relaxed inclusion check
-      if (!campaignTitle.includes(currentCity) && !currentCity.includes(campaignTitle)) {
-        setError(`You can only vote for locations if you are pinged in that location! You appear to be in '${currentCity}'.`);
+      // Relaxed inclusion check against all valid location components
+      const isLocationMatched = validLocations && validLocations.length > 0
+        ? validLocations.some(loc => campaignTitle.includes(loc) || loc.includes(campaignTitle))
+        : (!campaignTitle.includes(currentCity) && !currentCity.includes(campaignTitle));
+
+      if (!isLocationMatched && (!campaignTitle.includes(currentCity) && !currentCity.includes(campaignTitle))) {
+        showError(`You can only vote for locations if you are pinged in that location! You appear to be in '${currentCity}'.`);
         return;
       }
     }
 
     const targetId = candidateId || selectedBallotCandidate;
     if (!targetId) {
-      setError("No contender selected.");
+      showError("No contender selected.");
       return;
     }
 
     if (targetId === userId) {
-      setError("Self-voting is strictly forbidden. You cannot vote for yourself!");
+      showError("Self-voting is strictly forbidden. You cannot vote for yourself!");
       return;
     }
 
     if (hasVoted) {
-      setError("You have already cast your single vote in this kingdom's campaign.");
+      showError("You have already cast your single vote in this kingdom's campaign.");
       return;
     }
 
@@ -622,32 +622,42 @@ export default function CampaignDetail({
       }
     } catch (err: any) {
       console.error("Voting error:", err);
-      setError(err.message || "Failed to cast vote. Try again.");
+      showError(err.message || "Failed to cast vote. Try again.");
     } finally {
       setIsCastingVote(null);
     }
   };
 
-  // Archive/Take Down the entire campaign
-  const handleTakeDown = async () => {
-    if (!window.confirm("Are you sure you want to retire this kingdom? Once taken down, it will no longer be visible on the board.")) {
-      return;
-    }
+  const handleRevokeVote = async () => {
+    setIsCastingVote("revoking"); // reuse state for loading
+
     try {
-      const campaignDocRef = doc(db, "campaigns", campaign.id);
-      try {
-        await updateDoc(campaignDocRef, {
-          status: "taken_down",
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `campaigns/${campaign.id}`);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/revoke-vote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to revoke vote");
       }
-      onBack();
     } catch (err: any) {
-      console.error(err);
-      setError("Failed to retire this campaign. Please try again.");
+      console.error("Revoking vote error:", err);
+      showError(err.message || "Failed to revoke vote. Try again.");
+    } finally {
+      setIsCastingVote(null);
     }
   };
+
 
   // Determine top score (the leader)
   const highestScore = candidates.length > 0 ? candidates[0].voteCount : 0;
@@ -692,7 +702,10 @@ export default function CampaignDetail({
           userPhotoURL={userPhotoURL || null}
           userProfiles={userProfiles || []}
           onVote={(candidateId) => handleVote(undefined, candidateId)}
+          onRevokeVote={handleRevokeVote}
           isCastingVote={isCastingVote}
+          hasVoted={hasVoted}
+          votedCandidateId={votedCandidateId}
         />
         <PhoneVerificationPopup 
           isOpen={showPhoneVerification} 
@@ -854,13 +867,6 @@ export default function CampaignDetail({
               </button>
             </div>
 
-            {error && (
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-rose-300 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2 shrink-0">
-                <AlertCircle className="w-4.5 h-4.5 text-rose-600 shrink-0" />
-                {error}
-              </div>
-            )}
-
             {/* Hero Header Section */}
             <motion.div
               initial={{ opacity: 0, y: 15 }}
@@ -874,7 +880,7 @@ export default function CampaignDetail({
                   <button
                      onClick={() => {
                        if (isGuest) {
-                         setError(isCurrentUserPending ? "Guests cannot withdraw." : "Guests cannot quit domains.");
+                        showError(isCurrentUserPending ? "Guests cannot withdraw." : "Guests cannot quit domains.");
                          return;
                        }
                        setShowQuitPrompt(true)
@@ -889,7 +895,7 @@ export default function CampaignDetail({
                   <button
                     onClick={() => {
                       if (isGuest) {
-                        setError("Guests cannot join campaigns. Please register an account.");
+                        showError("Guests cannot join campaigns. Please register an account.");
                         return;
                       }
                       setShowOptInPrompt(true)
@@ -936,75 +942,95 @@ export default function CampaignDetail({
                 transition={{ delay: 0.2 }}
                 className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm relative flex flex-col justify-center"
               >
-                <div className="absolute top-0 left-0 right-0 h-[2px] bg-emerald-500/20" />
+                <div className={`absolute top-0 left-0 right-0 h-[2px] ${hasVoted ? 'bg-rose-500/20' : 'bg-emerald-500/20'}`} />
                 <div className="flex items-center gap-2 shrink-0 relative z-10">
-                  <button
-                        onClick={() => {
-                      if (selectedQuickVoteCandidate) {
-                        handleVote(undefined, selectedQuickVoteCandidate);
-                        setQuickVoteSearchQuery("");
-                        setSelectedQuickVoteCandidate(null);
-                      }
-                    }}
-                    disabled={!selectedQuickVoteCandidate || isCastingVote !== null}
-                    className="h-9 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:dark:bg-slate-800 text-white disabled:text-slate-500 font-mono font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-xs flex items-center justify-center shrink-0"
-                  >
-                    {isCastingVote ? "VOTING..." : "QUICK VOTE"}
-                  </button>
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search claimant..."
-                      value={quickVoteSearchQuery}
-                      onChange={(e) => {
-                        setQuickVoteSearchQuery(e.target.value);
-                        setSelectedQuickVoteCandidate(null);
-                      }}
-                      className="w-full h-9 bg-slate-200/50 dark:bg-slate-950/50 border border-slate-300 dark:border-slate-800 rounded-xl py-2 pl-8 pr-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
-                    />
-                    
-                    {/* Dropdown for search results */}
-                    {quickVoteSearchQuery.trim() !== "" && !selectedQuickVoteCandidate && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50 overflow-hidden max-h-[160px] flex flex-col">
-                        <div className="flex-1 overflow-y-auto no-scrollbar p-1 space-y-1">
-                           {activeCandidates.filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase())).length === 0 ? (
-                              <div className="text-center py-4 text-[10px] font-mono text-slate-400 uppercase">
-                                [ No claimants found ]
-                              </div>
-                           ) : (
-                             activeCandidates
-                               .filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase()))
-                               .map(c => (
-                                 <button
-                                   key={c.id}
-                                   onClick={() => {
-                                     setSelectedQuickVoteCandidate(c.id);
-                                     setQuickVoteSearchQuery(c.displayName || "");
-                                   }}
-                                   className={`w-full flex items-center gap-2 p-1.5 rounded-lg border text-left transition-all shrink-0 ${
-                                     selectedQuickVoteCandidate === c.id
-                                       ? "border-emerald-500 bg-emerald-500/10"
-                                       : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-                                   }`}
-                                 >
-                                   {c.photoURL ? (
-                                     <img src={c.photoURL} className="w-6 h-6 rounded-md object-cover" />
-                                   ) : (
-                                     <div className="w-6 h-6 rounded-md bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                                       <UserCircle className="w-4 h-4 text-slate-400" />
-                                     </div>
-                                   )}
-                                   <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                                     {c.displayName}
-                                   </span>
-                                 </button>
-                               ))
-                           )}
-                        </div>
+                  {hasVoted ? (
+                    <div className="w-full flex items-center justify-between gap-3">
+                      <div className="text-[11px] font-mono text-slate-500 uppercase flex flex-col">
+                        <span>You have cast your vote for:</span>
+                        <span className="text-slate-900 dark:text-white font-extrabold truncate max-w-[150px]">
+                          {activeCandidates.find(c => c.id === votedCandidateId)?.displayName || 'A claimant'}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <button
+                        onClick={handleRevokeVote}
+                        disabled={isCastingVote !== null}
+                        className="h-9 px-3 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-300 disabled:dark:bg-slate-800 text-white disabled:text-slate-500 font-mono font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-xs flex items-center justify-center shrink-0 cursor-pointer"
+                      >
+                        {isCastingVote === "revoking" ? "REVOKING..." : "REVOKE VOTE"}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          if (selectedQuickVoteCandidate) {
+                            handleVote(undefined, selectedQuickVoteCandidate);
+                            setQuickVoteSearchQuery("");
+                            setSelectedQuickVoteCandidate(null);
+                          }
+                        }}
+                        disabled={!selectedQuickVoteCandidate || isCastingVote !== null}
+                        className="h-9 px-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:dark:bg-slate-800 text-white disabled:text-slate-500 font-mono font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-xs flex items-center justify-center shrink-0"
+                      >
+                        {isCastingVote ? "VOTING..." : "QUICK VOTE"}
+                      </button>
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search claimant..."
+                          value={quickVoteSearchQuery}
+                          onChange={(e) => {
+                            setQuickVoteSearchQuery(e.target.value);
+                            setSelectedQuickVoteCandidate(null);
+                          }}
+                          className="w-full h-9 bg-slate-200/50 dark:bg-slate-950/50 border border-slate-300 dark:border-slate-800 rounded-xl py-2 pl-8 pr-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                        />
+                        
+                        {/* Dropdown for search results */}
+                        {quickVoteSearchQuery.trim() !== "" && !selectedQuickVoteCandidate && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-50 overflow-hidden max-h-[160px] flex flex-col">
+                            <div className="flex-1 overflow-y-auto no-scrollbar p-1 space-y-1">
+                               {activeCandidates.filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase())).length === 0 ? (
+                                  <div className="text-center py-4 text-[10px] font-mono text-slate-400 uppercase">
+                                    [ No claimants found ]
+                                  </div>
+                               ) : (
+                                 activeCandidates
+                                   .filter(c => c.displayName?.toLowerCase().includes(quickVoteSearchQuery.toLowerCase()))
+                                   .map(c => (
+                                     <button
+                                       key={c.id}
+                                       onClick={() => {
+                                         setSelectedQuickVoteCandidate(c.id);
+                                         setQuickVoteSearchQuery(c.displayName || "");
+                                       }}
+                                       className={`w-full flex items-center gap-2 p-1.5 rounded-lg border text-left transition-all shrink-0 ${
+                                         selectedQuickVoteCandidate === c.id
+                                           ? "border-emerald-500 bg-emerald-500/10"
+                                           : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                       }`}
+                                     >
+                                       {c.photoURL ? (
+                                         <img src={c.photoURL} className="w-6 h-6 rounded-md object-cover" />
+                                       ) : (
+                                         <div className="w-6 h-6 rounded-md bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                                           <UserCircle className="w-4 h-4 text-slate-400" />
+                                         </div>
+                                       )}
+                                       <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                         {c.displayName}
+                                       </span>
+                                     </button>
+                                   ))
+                               )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </motion.div>
 
@@ -1086,37 +1112,6 @@ export default function CampaignDetail({
 
           {/* Leaderboard content inside scrollable wrapper */}
           <div className="flex-1 overflow-y-auto pr-1 pb-6 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent flex flex-col min-h-0">
-            {/* Elegant Tab Switcher for Domain Leaderboard vs Pending Approvals */}
-            {userId === currentCampaign.creatorId && pendingCandidates.length > 0 && (
-              <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("leaderboard")}
-                  className={`px-3 py-1.5 text-[10px] font-mono font-extrabold tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-                    activeTab === "leaderboard"
-                      ? "bg-amber-500 text-white shadow-xs"
-                      : "text-slate-500 hover:text-amber-500 bg-slate-100 dark:bg-slate-800/50"
-                  }`}
-                >
-                  Leaderboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("pending")}
-                  className={`px-3 py-1.5 text-[10px] font-mono font-extrabold tracking-wider uppercase rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
-                    activeTab === "pending"
-                      ? "bg-rose-500 text-white shadow-xs"
-                      : "text-slate-500 hover:text-rose-500 bg-slate-100 dark:bg-slate-800/50"
-                  }`}
-                >
-                  <span>Escrow & Approvals</span>
-                  <span className="px-1.5 py-0.5 bg-black/10 dark:bg-white/10 text-[9px] rounded-full font-black">
-                    {pendingCandidates.length}
-                  </span>
-                </button>
-              </div>
-            )}
-
             <AnimatePresence mode="wait">
               {activeTab === "leaderboard" && (
                 <motion.div
@@ -1290,92 +1285,6 @@ export default function CampaignDetail({
                   </AnimatePresence>
                 </div>
               </div>
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === "pending" && (
-            <motion.div
-              key="pending"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.18 }}
-              className="w-full h-full flex flex-col space-y-4"
-            >
-              <div className="flex items-center justify-between mb-2 shrink-0">
-                <h2 className="font-display font-medium text-lg text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-slate-400" />
-                  Pending Escrow & Approvals
-                </h2>
-              </div>
-
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono leading-relaxed">
-                [ ROYAL SECURITY ESCROW: THE FOLLOWING CANDIDATES REQUEST ACCESS TO THE LEADERBOARD IN THIS DOMAIN. ]
-              </p>
-
-              {pendingCandidates.length === 0 ? (
-                <div className="p-10 text-center bg-slate-50 dark:bg-slate-900/20 border border-dashed border-slate-250 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 text-xs font-mono shrink-0">
-                  📯 [ ALL ESCROW CLAIMS CLEARED AND INSTATED ]
-                </div>
-              ) : (
-                <div className="border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-[#07080a] flex flex-col shadow-sm relative font-mono select-none rounded-[20px] overflow-hidden">
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-slate-50 dark:bg-[#07080a]">
-                    {pendingCandidates.map((cand, idx) => {
-                      const profile = userProfiles?.find((p) => p.uid === cand.userId);
-                      const currentName = profile?.displayName || cand.displayName;
-                      const currentPhoto = profile?.photoURL !== undefined ? profile.photoURL : (cand.photoURL || null);
-                      
-                      // Calculate validation countdown
-                      let remainingText = "Manual approval required";
-                      if (cand.pendingUntil) {
-                        const remainingMs = (cand.pendingUntil.seconds 
-                          ? cand.pendingUntil.seconds * 1000 
-                          : new Date(cand.pendingUntil as any).getTime()) - Date.now();
-                        if (remainingMs > 0) {
-                          const hours = Math.floor(remainingMs / (60 * 60 * 1000));
-                          const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
-                          remainingText = `${hours}h ${minutes}m remaining`;
-                        } else {
-                          remainingText = "Escrow period completed";
-                        }
-                      }
-
-                      return (
-                        <div key={cand.id || cand.userId || idx} className="p-4 flex items-center justify-between gap-4 hover:bg-slate-200/20 dark:hover:bg-slate-900/20 transition-all">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-250 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                              {currentPhoto ? (
-                                <img src={currentPhoto || undefined} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                              ) : (
-                                <span className="text-sm">👑</span>
-                              )}
-                            </div>
-                            <div className="flex flex-col min-w-0 leading-tight">
-                              <span className="font-extrabold text-slate-800 dark:text-slate-100 uppercase text-xs truncate">
-                                {currentName}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
-                                <Clock className="w-3 h-3 text-amber-500" />
-                                {remainingText}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleApproveCandidate(cand.userId)}
-                            disabled={isApproving === cand.userId}
-                            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/20 text-white text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center gap-1 transition-all shrink-0"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>{isApproving === cand.userId ? "APPROVING..." : "APPROVE"}</span>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               )}
             </motion.div>
           )}

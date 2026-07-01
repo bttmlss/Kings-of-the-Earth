@@ -5,6 +5,7 @@ import KingdomCourtBuilder from "./KingdomCourtBuilder";
 import { auth, db } from "../firebase";
 import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
+import { useToast } from "../contexts/ToastContext";
 import PostCard, { Post } from "./PostCard";
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../lib/cropImage';
@@ -19,7 +20,10 @@ interface CandidateCampaignScreenProps {
   userPhotoURL: string | null;
   userProfiles: any[];
   onVote?: (candidateId: string) => void;
+  onRevokeVote?: () => void;
   isCastingVote?: string | null;
+  hasVoted?: boolean;
+  votedCandidateId?: string | null;
 }
 
 export default function CandidateCampaignScreen({
@@ -32,7 +36,10 @@ export default function CandidateCampaignScreen({
   userPhotoURL,
   userProfiles,
   onVote,
+  onRevokeVote,
   isCastingVote,
+  hasVoted,
+  votedCandidateId,
 }: CandidateCampaignScreenProps) {
   const [showDetailsPage, setShowDetailsPage] = useState(false);
 
@@ -131,6 +138,91 @@ export default function CandidateCampaignScreen({
     };
   }, []);
 
+  const [requestSent, setRequestSent] = useState(false);
+  const [isUserInCampaign, setIsUserInCampaign] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsUserInCampaign(false);
+    setRequestSent(false);
+
+    if (!userId || isGuest) return;
+    if (userId === campaign.creatorId || userId === candidate.userId) {
+      if (isMounted) setIsUserInCampaign(true);
+      return;
+    }
+    const checkUserInCampaign = async () => {
+      try {
+        const notifsRef = collection(db, "notifications");
+        const q = query(
+          notifsRef,
+          where("sourceUserId", "==", userId)
+        );
+        const notifSnap = await getDocs(q);
+        const hasPending = notifSnap.docs.some(doc => {
+          const data = doc.data();
+          return data.campaignId === campaign.id && data.type === "campaign_join" && data.needsApproval === true;
+        });
+        if (hasPending) {
+          if (isMounted) {
+            setIsUserInCampaign(false);
+            setRequestSent(true);
+          }
+          return;
+        }
+
+        const candidateRef = doc(db, "campaigns", campaign.id, "candidates", userId);
+        const candidateSnap = await getDoc(candidateRef);
+        if (candidateSnap.exists()) {
+          if (isMounted) {
+            setIsUserInCampaign(true);
+            setRequestSent(false);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          setIsUserInCampaign(false);
+          setRequestSent(false);
+        }
+      } catch (err) {
+        console.warn("Failed checking candidate status:", err);
+      }
+    };
+    checkUserInCampaign();
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, campaign.creatorId, campaign.id, isGuest, candidate.userId]);
+
+  const handleRequestToJoin = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!userId || isGuest || requestSent) return;
+    try {
+      setIsSaving(true);
+      const notifsRef = collection(db, "notifications");
+      await addDoc(notifsRef, {
+        userId: candidate.userId, // Send to the candidate, not the domain creator
+        sourceUserId: userId,
+        sourceUserName: userName || "A User",
+        sourceUserPhoto: userPhotoURL || null,
+        type: "court_join",
+        title: "Court Request",
+        body: `${userName || "A user"} wants to join your campaign's pedigree chart!`,
+        read: false,
+        campaignId: campaign.id,
+        needsApproval: true,
+        createdAt: serverTimestamp(),
+      });
+      setRequestSent(true);
+    } catch (err) {
+      console.error(err);
+      showError("Failed to send request");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Edit details modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(candidate.campaignTitle || candidate.displayName);
@@ -139,7 +231,7 @@ export default function CandidateCampaignScreen({
     campaign.pendingTime || "24hours"
   );
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
   const [editError, setEditError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -496,7 +588,7 @@ export default function CandidateCampaignScreen({
                           id="edit-campaign-button"
                           onClick={() => {
                             if (isGuest) {
-                              setError("Guests cannot edit campaigns. Please log in.");
+                              showError("Guests cannot edit campaigns. Please log in.");
                               return;
                             }
                             setEditTitle(localCampaignTitle);
@@ -564,22 +656,44 @@ export default function CandidateCampaignScreen({
 
                   {/* VOTE button positioned at the bottom left corner of the outer campaign cover box */}
                   <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 z-20 flex items-center gap-2">
-                    {userId !== candidate.userId && (
+                    {userId !== candidate.userId && !hasVoted && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onVote) onVote(candidate.id);
                         }}
-                        disabled={isCastingVote === candidate.id}
-                        className="px-6 py-2 rounded-xl font-mono text-[11px] uppercase tracking-widest font-black flex items-center justify-center gap-1.5 transition-all bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20 border border-green-400 dark:border-green-600 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isCastingVote !== null}
+                        className="px-6 py-2 rounded-xl font-mono text-[11px] uppercase tracking-widest font-black flex items-center justify-center gap-1.5 transition-all bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 border border-emerald-400 dark:border-emerald-600 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isCastingVote === candidate.id ? "VOTING..." : "VOTE"}
+                      </button>
+                    )}
+                    {hasVoted && votedCandidateId === candidate.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onRevokeVote) onRevokeVote();
+                        }}
+                        disabled={isCastingVote !== null}
+                        className="px-6 py-2 rounded-xl font-mono text-[11px] uppercase tracking-widest font-black flex items-center justify-center gap-1.5 transition-all bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 border border-rose-400 dark:border-rose-600 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isCastingVote === "revoking" ? "REVOKING..." : "REVOKE VOTE"}
                       </button>
                     )}
                   </div>
 
                   {/* View Details button positioned at the bottom right corner of the outer campaign cover box */}
-                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20">
+                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 flex flex-col gap-2 items-end">
+                    {!isUserInCampaign && (
+                      <button
+                        onClick={handleRequestToJoin}
+                        disabled={requestSent || isSaving}
+                        className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-amber-600 hover:scale-105 active:scale-95 transition-all"
+                        title={requestSent ? "Requested to Join" : "Join Campaign"}
+                      >
+                        <span>{requestSent ? "REQUESTED" : "JOIN"}</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setShowDetailsPage(true)}
                       className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-slate-200 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"

@@ -3,6 +3,7 @@ import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Sparkles, X, ChevronRight, CheckCircle2, ShieldAlert, Award, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useToast } from "../contexts/ToastContext";
 import { Campaign } from "../types";
 import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps';
 
@@ -157,12 +158,12 @@ export default function CreateCampaignModal({
   const [campaignMode, setCampaignMode] = useState<"general" | "location">("general");
   const [prefix, setPrefix] = useState<"King of" | "Queen of">("King of");
   const [domainPayload, setDomainPayload] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { showError } = useToast();
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isValidated, setIsValidated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [domainType, setDomainType] = useState<string | null>(null);
-  const [pendingTime, setPendingTime] = useState<"none" | "24hours" | "72hours" | "upon_approval">("24hours");
+  const [pendingTime, setPendingTime] = useState<"none" | "24hours" | "72hours" | "upon_approval">("none");
 
   const [exampleIndex, setExampleIndex] = useState(0);
 
@@ -192,7 +193,7 @@ export default function CreateCampaignModal({
   const handleValidate = async () => {
     const title = getFulltitle();
     if (!domainPayload.trim() || domainPayload.trim().length < 3) {
-      setError("Please key in a domain title of at least 3 characters.");
+      showError("Please key in a domain title of at least 3 characters.");
       return;
     }
 
@@ -221,7 +222,7 @@ export default function CreateCampaignModal({
 
       const data = await response.json();
       if (!data.isValid) {
-        setError(data.reason || "Linguistic constraints violated. Suffix must be: Persons/Cultures, Places/locations, plural Things/Objects, or Verbs/Actions ending in -ing.");
+        showError(data.reason || "Linguistic constraints violated. Suffix must be: Persons/Cultures, Places/locations, plural Things/Objects, or Verbs/Actions ending in -ing.");
         setIsValidated(false);
       } else {
         setIsValidated(true);
@@ -230,7 +231,7 @@ export default function CreateCampaignModal({
       }
     } catch (err: any) {
       console.error(err);
-      setError("An unexpected validation failure occurred. Please try again.");
+      showError("An unexpected validation failure occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -286,7 +287,7 @@ export default function CreateCampaignModal({
       onSuccess(newCampaign);
     } catch (err: any) {
       console.error("Create campaign error:", err);
-      setError(err.message || "Failed to crown the new campaign in the ledger. Please try again.");
+      showError(err.message || "Failed to crown the new campaign in the ledger. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -308,7 +309,7 @@ export default function CreateCampaignModal({
             </div>
             <div>
               <h2 className="font-display font-medium text-lg text-slate-800 dark:text-slate-100">
-                Create Campaign
+                Create Domain
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-300">Claims must abide by grammatical laws</p>
             </div>
@@ -448,41 +449,9 @@ export default function CreateCampaignModal({
             </p>
           </div>
 
-          {/* Pending Validation Time selection */}
-          <div className="space-y-2 col-span-2">
-            <label htmlFor="pendingTimeSetting" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest">
-              Pending Validation Period
-            </label>
-            <select
-              id="pendingTimeSetting"
-              value={pendingTime}
-              onChange={(e) => setPendingTime(e.target.value as any)}
-              disabled={isLoading}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-semibold text-slate-800"
-            >
-              <option value="none">None (Instant Access)</option>
-              <option value="24hours">24 Hours Pending Period</option>
-              <option value="72hours">72 Hours Pending Period</option>
-              <option value="upon_approval">Leader Manual Approval Only</option>
-            </select>
-            <p className="text-[10px] text-slate-400 font-mono">
-              Controls the escrow period before a newly joined contestant can be voted on.
-            </p>
-          </div>
 
           {/* Error and validation reporting */}
           <AnimatePresence mode="wait">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                className="p-4 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5 text-rose-700 text-xs"
-              >
-                <ShieldAlert className="w-4.5 h-4.5 shrink-0 text-rose-500" />
-                <span>{error}</span>
-              </motion.div>
-            )}
 
             {aiAnalysis && (
               <motion.div

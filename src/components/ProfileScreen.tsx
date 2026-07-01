@@ -12,6 +12,7 @@ import LeaderboardScreen from "./LeaderboardScreen";
 import Q2LeaderboardLiveAnimation from "./Q2LeaderboardLiveAnimation";
 import DominionMapModal from "./DominionMapModal";
 import UserCandlestickModal from "./UserCandlestickModal";
+import { useToast } from "../contexts/ToastContext";
 // @ts-ignore
 import leaderboardBadge from "../assets/images/leaderboard_badge_1781916796236.jpg";
 
@@ -190,7 +191,7 @@ export default function ProfileScreen({
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
   const [isNameTaken, setIsNameTaken] = useState<boolean | null>(null);
 
   const [bio, setBio] = useState("");
@@ -393,12 +394,11 @@ export default function ProfileScreen({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editName.trim()) {
-      setErrorMessage("Sovereign Name cannot be empty.");
+      showError("Sovereign Name cannot be empty.");
       return;
     }
     
     setIsSaving(true);
-    setErrorMessage(null);
     setSaveMessage(null);
     
     try {
@@ -476,7 +476,7 @@ export default function ProfileScreen({
       }, 1500);
     } catch (err: any) {
       console.error("Save Profile Error:", err);
-      setErrorMessage("The Great Ledger rejected the seal. Details: " + (err.message || String(err)));
+      showError("The Great Ledger rejected the seal. Details: " + (err.message || String(err)));
       handleFirestoreError(err, OperationType.WRITE, `user_profiles/${user.uid}`);
     } finally {
       setIsSaving(false);
@@ -990,7 +990,7 @@ export default function ProfileScreen({
                             setEditPhoto(b64);
                           } catch (err) {
                             console.error("Failed to process image:", err);
-                            setErrorMessage("Failed to process image.");
+                          showError("Failed to process image.");
                           }
                         }
                       }}
@@ -1046,12 +1046,6 @@ export default function ProfileScreen({
                     <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1 leading-none uppercase tracking-wide">
                       <CheckCircle className="w-3.5 h-3.5 text-emerald-500 stroke-[2.5]" />
                       {saveMessage}
-                    </span>
-                  )}
-                  {errorMessage && (
-                    <span className="text-[9px] text-rose-600 font-bold flex items-center gap-1 leading-none uppercase tracking-wide">
-                      <ShieldAlert className="w-3.5 h-3.5 text-rose-500 stroke-[2.5]" />
-                      {errorMessage}
                     </span>
                   )}
                 </div>

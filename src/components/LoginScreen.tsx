@@ -3,6 +3,7 @@ import { signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber, Confirmation
 import { auth, googleProvider } from "../firebase";
 import { Crown, Sparkles, ShieldCheck, Phone, CheckCircle2 } from "lucide-react";
 import { motion } from "motion/react";
+import { useToast } from "../contexts/ToastContext";
 
 declare global {
   interface Window {
@@ -18,7 +19,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
@@ -58,7 +59,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       setConfirmationResult(null);
       setVerificationCode("");
       setTimeLeft(null);
-      setError("Verification code expired. Please request a new one.");
+      showError("Verification code expired. Please request a new one.");
     }
     return () => clearInterval(timer);
   }, [confirmationResult, timeLeft]);
@@ -72,8 +73,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         onLoginSuccess(result.user);
       }
     } catch (err: any) {
-      console.error("Google Sign-In Error. Falling back or displaying: ", err);
-      setError(err.message || "Unable to open Google Login Pop-up (it could be blocked by browser iframe settings).");
+      if (err.code !== 'auth/popup-closed-by-user') {
+        console.error("Google Sign-In Error: ", err);
+        showError(err.message || "Unable to open Google Login Pop-up (it could be blocked by browser iframe settings).");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -92,7 +95,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     if (!/^\+\d{10,15}$/.test(formattedPhone)) {
-      setError("Please enter a valid phone number including country code (e.g. +1234567890).");
+      showError("Please enter a valid phone number including country code (e.g. +1234567890).");
       return;
     }
 
@@ -106,11 +109,11 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     } catch (err: any) {
       console.error("Phone Auth Error Detail:", err);
       if (err.code === "auth/invalid-phone-number") {
-         setError("Invalid phone number format. Please ensure it includes the country code (e.g. +1).");
+         showError("Invalid phone number format. Please ensure it includes the country code (e.g. +1).");
       } else if (err.code === "auth/operation-not-allowed") {
-         setError("Phone authentication is not fully enabled in Firebase, or the SMS region is not allowed. Please configure this in the Firebase Console (Auth -> Settings -> SMS Region Policy).");
+         showError("Phone authentication is not fully enabled in Firebase, or the SMS region is not allowed. Please configure this in the Firebase Console (Auth -> Settings -> SMS Region Policy).");
       } else {
-         setError(err.message || "Failed to send verification code.");
+         showError(err.message || "Failed to send verification code.");
       }
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.render().then((widgetId: any) => {
@@ -127,7 +130,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!verificationCode.trim() || !confirmationResult) {
-      setError("Please enter the verification code.");
+      showError("Please enter the verification code.");
       return;
     }
 
@@ -141,7 +144,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       }
     } catch (err: any) {
       console.error("Code Verification Error:", err);
-      setError("Invalid verification code. Please try again.");
+      showError("Invalid verification code. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -171,16 +174,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             Battle rival claimants, establish absolute 1-of-1 territory domain titles, and harvest real-time continuous coronation votes to rule.
           </p>
         </div>
-
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs leading-relaxed"
-          >
-            {error}
-          </motion.div>
-        )}
 
         <div className="space-y-6 relative z-10">
           {/* Official Login Options */}

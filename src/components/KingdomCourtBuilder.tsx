@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc, collection, addDoc, query, where, getDocs, limit } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc, collection, addDoc, query, where, getDocs, limit, deleteDoc } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Court, CourtMember } from "../types";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -23,6 +23,7 @@ import {
   X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useToast } from "../contexts/ToastContext";
 
 interface KingdomCourtBuilderProps {
   campaignId: string;
@@ -57,7 +58,7 @@ export default function KingdomCourtBuilder({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
   const [isUserInCampaign, setIsUserInCampaign] = useState<boolean | null>(null);
   const [requestSent, setRequestSent] = useState(false);
 
@@ -101,54 +102,18 @@ export default function KingdomCourtBuilder({
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as Court;
-          let healedMembers = [...(data.members || [])];
-          let needsHealing = false;
+          const members = data.members || [];
+          const rootIndex = members.findIndex(m => m.id === "root");
+          const hasLeader = members.some(m => m.userId === userId);
 
-          const hasLeader = healedMembers.some(m => m.userId === userId);
-          const rootIndex = healedMembers.findIndex(m => m.id === "root");
-
+          // If a court exists without the true leader (from previous bug), wipe it entirely
+          // to revert to "Not Founded Yet" state and remove the unauthorized initiates.
           if (!hasLeader || rootIndex === -1) {
-            needsHealing = true;
-            let cleanedDomain = campaignTitle || "Realm";
-            cleanedDomain = cleanedDomain.replace(/^(king|queen)\s+of\s*\.*/i, "").trim();
-            
-            const properRoot: CourtMember = {
-              id: "root",
-              parentId: null,
-              displayName: userName || "Campaign Leader",
-              title: `Sovereign of ${cleanedDomain}`,
-              isAppUser: true,
-              userId: userId,
-              photoURL: userPhotoURL || "👑"
-            };
-
-            if (rootIndex !== -1 && healedMembers[rootIndex].userId !== userId) {
-              const newId = `healed_${Date.now()}`;
-              healedMembers[rootIndex].id = newId;
-              healedMembers[rootIndex].parentId = "root";
-              
-              healedMembers.forEach(m => {
-                if (m.parentId === "root" && m.id !== newId) m.parentId = newId;
-              });
+            console.warn("Detected corrupted/unauthorized court chart. Reverting to empty state.");
+            if (currentAppUserId === userId) {
+              deleteDoc(courtDocRef).catch(err => console.warn("Failed to delete corrupted court", err));
             }
-
-            healedMembers.forEach(m => {
-              if (m.parentId === null && m.id !== "root") {
-                m.parentId = "root";
-              }
-            });
-
-            if (!healedMembers.some(m => m.id === "root")) {
-                healedMembers.push(properRoot);
-            }
-          }
-
-          if (needsHealing) {
-             const repairedCourt = { ...data, members: healedMembers };
-             setCourt(repairedCourt);
-             if (currentAppUserId === userId) {
-                setDoc(courtDocRef, repairedCourt).catch(err => console.warn("Auto-heal failed", err));
-             }
+            setCourt(null);
           } else {
              setCourt(data);
           }
@@ -169,9 +134,13 @@ export default function KingdomCourtBuilder({
 
   // Check if current user is in campaign
   useEffect(() => {
+    let isMounted = true;
+    setIsUserInCampaign(false);
+    setRequestSent(false);
+
     if (!currentAppUserId) return;
-    if (currentAppUserId === campaignCreatorId) {
-      setIsUserInCampaign(true);
+    if (currentAppUserId === campaignCreatorId || currentAppUserId === userId) {
+      if (isMounted) setIsUserInCampaign(true);
       return;
     }
     const checkUserInCampaign = async () => {
@@ -182,8 +151,10 @@ export default function KingdomCourtBuilder({
           const courtData = courtSnap.data() as Court;
           const isMember = courtData.members?.some(m => m.isAppUser && m.userId === currentAppUserId);
           if (isMember) {
-            setIsUserInCampaign(true);
-            setRequestSent(false);
+            if (isMounted) {
+              setIsUserInCampaign(true);
+              setRequestSent(false);
+            }
             return;
           }
         }
@@ -199,21 +170,30 @@ export default function KingdomCourtBuilder({
           return data.campaignId === campaignId && data.type === "court_join" && data.needsApproval === true;
         });
         if (hasPending) {
-          setIsUserInCampaign(false);
-          setRequestSent(true);
+          if (isMounted) {
+            setIsUserInCampaign(false);
+            setRequestSent(true);
+          }
           return;
         }
 
-        setIsUserInCampaign(false);
-        setRequestSent(false);
+        if (isMounted) {
+          setIsUserInCampaign(false);
+          setRequestSent(false);
+        }
       } catch (err) {
         console.warn("Failed checking candidate status:", err);
-        setIsUserInCampaign(false);
-        setRequestSent(false);
+        if (isMounted) {
+          setIsUserInCampaign(false);
+          setRequestSent(false);
+        }
       }
     };
     checkUserInCampaign();
-  }, [campaignId, currentAppUserId, campaignCreatorId]);
+    return () => {
+      isMounted = false;
+    };
+  }, [campaignId, currentAppUserId, campaignCreatorId, userId]);
 
   const handleRequestToJoin = async () => {
     if (!currentAppUserId || !userId || requestSent) return;
@@ -238,7 +218,7 @@ export default function KingdomCourtBuilder({
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
       console.error(err);
-      setError("Failed to send request");
+      showError("Failed to send request");
     } finally {
       setSaving(false);
     }
@@ -278,7 +258,7 @@ export default function KingdomCourtBuilder({
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
       console.error(err);
-      setError("Failed to build the Pedigree Chart in the ledger.");
+      showError("Failed to build the Pedigree Chart in the ledger.");
       handleFirestoreError(err, OperationType.WRITE, courtDocPath);
     } finally {
       setSaving(false);
@@ -302,7 +282,7 @@ export default function KingdomCourtBuilder({
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err: any) {
       console.error("Save Court error: ", err);
-      setError("Failed to save pedigree chart modifications.");
+      showError("Failed to save pedigree chart modifications.");
       handleFirestoreError(err, OperationType.WRITE, courtDocPath);
     } finally {
       setSaving(false);
@@ -1005,12 +985,6 @@ export default function KingdomCourtBuilder({
 
   return (
     <div className="w-full h-full flex flex-col text-slate-850 dark:text-slate-50 font-sans selection:bg-amber-100 dark:selection:bg-amber-900/30">
-      {error && (
-        <div className="mb-4 p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-rose-300 dark:border-rose-950 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
-          <span>⚠️</span>
-          <span>{error}</span>
-        </div>
-      )}
 
       {/* Screen Empty State - User hasn't founded a court yet */}
       {!court && !loading ? (

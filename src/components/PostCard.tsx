@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share2, Trash2, MoreHorizontal, Loader2 } from "l
 import { motion, AnimatePresence } from "motion/react";
 import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from "../firebase";
+import { useToast } from "../contexts/ToastContext";
 
 export interface Post {
   id: string;
@@ -35,6 +36,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, o
   const [newComment, setNewComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { showError, showSuccess } = useToast();
 
   const isLiked = post.likes?.includes(currentUser?.uid);
 
@@ -122,14 +125,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, o
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this post? This action cannot be undone.")) return;
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      setShowOptions(false);
+      return;
+    }
     try {
       const postRef = doc(db, "posts", post.id);
       await deleteDoc(postRef);
       if (onDelete) onDelete(post.id);
+      showSuccess("Post deleted.");
     } catch (error) {
       console.error("Error deleting post:", error);
-      alert("Failed to delete post. Please try again.");
+      showError("Failed to delete post. Please try again.");
+    } finally {
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -218,6 +228,38 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onViewProfile, o
                   >
                     <Trash2 className="w-4 h-4" /> Delete Post
                   </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showDeleteConfirm && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-rose-100 dark:border-rose-900/30 z-10 overflow-hidden flex flex-col"
+                >
+                  <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest text-center border-b border-slate-100 dark:border-slate-700">Delete Post?</div>
+                  <div className="flex">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(false);
+                      }}
+                      className="flex-1 text-center py-2.5 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 border-r border-slate-100 dark:border-slate-700"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete();
+                      }}
+                      className="flex-1 text-center py-2.5 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 font-bold"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

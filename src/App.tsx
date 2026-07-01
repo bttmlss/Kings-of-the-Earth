@@ -516,7 +516,7 @@ export default function App() {
         <div
           onClick={() => {
             setSelectedCampaign(null);
-            setCurrentTab("campaign");
+            setCurrentTab("home");
           }}
           className="flex items-center gap-2.5 cursor-pointer select-none group"
         >
@@ -541,8 +541,8 @@ export default function App() {
             className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[10px] sm:text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
           >
             <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Start Campaign</span>
-            <span className="sm:hidden">Start</span>
+            <span className="hidden sm:inline">Create Domain</span>
+            <span className="sm:hidden">Create</span>
           </button>
           
           <div className="hidden sm:flex flex-col items-end text-right ml-2">
