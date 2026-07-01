@@ -491,16 +491,6 @@ export default function CandidateCampaignScreen({
                     
                     {/* Action buttons in top-right of the banner/title box */}
                     <div className="absolute top-3 right-4 z-20 flex gap-2">
-                      {onViewDomainInfo && (
-                        <button
-                          onClick={onViewDomainInfo}
-                          className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-slate-300 dark:text-slate-300 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
-                          title="View Domain Info"
-                        >
-                          <Crown className="w-3.5 h-3.5" />
-                          <span>Domain</span>
-                        </button>
-                      )}
                       {userId === candidate.userId && (
                         <button
                           id="edit-campaign-button"
@@ -539,8 +529,12 @@ export default function CandidateCampaignScreen({
                         )}
                       </div>
                       <div className="text-center sm:text-left space-y-1 pt-2 sm:pt-4">
-                        <div className="flex items-center justify-center sm:justify-start gap-1">
-                          <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                        <div 
+                          className="flex items-center justify-center sm:justify-start gap-1 cursor-pointer group"
+                          onClick={onViewDomainInfo}
+                          title="View Domain Info"
+                        >
+                          <div className="text-[10px] sm:text-[11px] font-bold font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider block group-hover:text-amber-500 transition-colors">
                             {campaign.domainTitle}
                           </div>
                           {campaign.isVerified && (

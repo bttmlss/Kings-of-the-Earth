@@ -23,7 +23,7 @@ function AutocompleteSearchBar({ value, onChange, activeTab, campaigns }: { valu
     if (activeTab === "general") {
       const query = value.toLowerCase().trim();
       const matched = campaigns
-        .filter(c => c.domainType !== "Locations (Places)" && !c.isVerified)
+        .filter(c => c.domainType !== "locations" && !c.isVerified)
         .filter(c => !query || c.domainTitle.toLowerCase().includes(query))
         .sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0))
         .map(c => ({

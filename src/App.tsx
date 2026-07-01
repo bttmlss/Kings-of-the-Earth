@@ -529,9 +529,6 @@ export default function App() {
             }`}>
               Kings of the Earth
             </h1>
-            <p className="text-[10px] text-amber-600 font-bold tracking-wider uppercase leading-none mt-1.5 flex items-center gap-1">
-              🎮 Sovereign Domain Game
-            </p>
           </div>
         </div>
 
@@ -1323,13 +1320,13 @@ export default function App() {
                                 value={phoneNumber}
                                 onChange={(e) => setPhoneNumber(e.target.value)}
                                 disabled={isLinkingPhone}
-                                className="flex-1 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
+                                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
                               />
                               <button
                                 type="button"
                                 onClick={handleSendCode}
                                 disabled={isLinkingPhone || !phoneNumber.trim()}
-                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                                className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
                               >
                                 {isLinkingPhone ? "Sending..." : "Send Code"}
                               </button>
@@ -1343,13 +1340,13 @@ export default function App() {
                                   value={verificationCode}
                                   onChange={(e) => setVerificationCode(e.target.value)}
                                   disabled={isLinkingPhone}
-                                  className="flex-1 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
+                                  className="flex-1 min-w-0 px-3 py-1.5 bg-slate-200/60 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-amber-400 font-medium text-slate-800 dark:text-slate-100"
                                 />
                                 <button
                                   type="button"
                                   onClick={handleVerifyCode}
                                   disabled={isLinkingPhone || !verificationCode.trim()}
-                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                                  className="shrink-0 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 font-bold text-white text-[9px] uppercase tracking-wider rounded-xl disabled:opacity-50 cursor-pointer whitespace-nowrap"
                                 >
                                   {isLinkingPhone ? "Verifying..." : "Verify Code"}
                                 </button>

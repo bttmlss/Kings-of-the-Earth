@@ -850,7 +850,7 @@ export default function CampaignDetail({
                 className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Back to domains</span>
+                <span>Back to browse</span>
               </button>
             </div>
 
@@ -874,7 +874,7 @@ export default function CampaignDetail({
                   <button
                      onClick={() => {
                        if (isGuest) {
-                         setError(isCurrentUserPending ? "Guests cannot cancel requests." : "Guests cannot quit campaigns.");
+                         setError(isCurrentUserPending ? "Guests cannot withdraw." : "Guests cannot quit domains.");
                          return;
                        }
                        setShowQuitPrompt(true)
@@ -883,7 +883,7 @@ export default function CampaignDetail({
                      className="flex items-center justify-center gap-1.5 h-8 px-3 rounded-xl text-[10px] font-mono tracking-wider font-extrabold border transition-all cursor-pointer shadow-xs bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:bg-rose-500/10 text-slate-500 hover:text-[#e11d48] min-w-[80px]"
                   >
                     <LogOut className="w-3.5 h-3.5 shrink-0" />
-                    <span>{isLeaving ? (isCurrentUserPending ? "CNL..." : "LVR...") : (isCurrentUserPending ? "CANCEL REQ" : "QUIT")}</span>
+                    <span>{isLeaving ? (isCurrentUserPending ? "WDR..." : "LVR...") : (isCurrentUserPending ? "WITHDRAW" : "QUIT")}</span>
                   </button>
                 ) : (
                   <button
@@ -1438,7 +1438,7 @@ export default function CampaignDetail({
                 <LogOut className="w-4.5 h-4.5 shrink-0" />
               </div>
               <p className="text-xs text-slate-805 dark:text-slate-100 mb-5 leading-relaxed">
-                {isCurrentUserPending ? "do you wish to cancel your request to join this campaign? [yes or no]" : "do you wish to quit this campaign? [yes or no]"}
+                {isCurrentUserPending ? "do you wish to withdraw your pending candidacy for this domain? [yes or no]" : "do you wish to quit this domain? [yes or no]"}
               </p>
               <div className="flex gap-3 justify-center">
                 <button

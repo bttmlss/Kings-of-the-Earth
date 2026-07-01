@@ -859,7 +859,7 @@ async function startServer() {
           sourceUserName: finalDisplayName,
           sourceUserPhoto: finalPhotoURL,
           campaignId: campaignId,
-          needsApproval: status === "pending" && pendingTime === "upon_approval"
+          needsApproval: status === "pending"
         });
       });
 
@@ -922,6 +922,58 @@ async function startServer() {
       });
 
       console.log(`[AUDIT] User ${userId} accepted ${candidateId} into campaign ${campaignId}`);
+      return res.json({ success: true });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  // API Route - reject-campaign-request
+  app.post("/api/reject-campaign-request", async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split("Bearer ")[1];
+      const decodedToken = await getAuth().verifyIdToken(token);
+      const userId = decodedToken.uid;
+
+      const { campaignId, candidateId, notificationId } = req.body;
+      if (!campaignId || !candidateId || !notificationId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const db = getFirestore();
+      
+      const campaignDocRef = db.doc(`campaigns/${campaignId}`);
+      const candidateDocRef = db.doc(`campaigns/${campaignId}/candidates/${candidateId}`);
+      const notificationDocRef = db.doc(`notifications/${notificationId}`);
+
+      await db.runTransaction(async (transaction) => {
+        const campaignDoc = await transaction.get(campaignDocRef);
+        if (!campaignDoc.exists) {
+          throw new Error("Campaign does not exist.");
+        }
+        
+        const campaignData = campaignDoc.data() || {};
+        if (campaignData.creatorId !== userId) {
+          throw new Error("Only the campaign leader can reject requests.");
+        }
+
+        const candidateDoc = await transaction.get(candidateDocRef);
+        if (candidateDoc.exists) {
+          transaction.delete(candidateDocRef);
+        }
+        
+        // Mark the notification as no longer needing approval, and read
+        transaction.update(notificationDocRef, {
+          needsApproval: false,
+          read: true
+        });
+      });
+
+      console.log(`[AUDIT] User ${userId} rejected ${candidateId} from campaign ${campaignId}`);
       return res.json({ success: true });
     } catch (err: any) {
       next(err);

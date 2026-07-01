@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc, collection, addDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../firebase";
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc, collection, addDoc, query, where, getDocs, limit } from "firebase/firestore";
+import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Court, CourtMember } from "../types";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { 
@@ -100,7 +100,58 @@ export default function KingdomCourtBuilder({
       courtDocRef,
       (snap) => {
         if (snap.exists()) {
-          setCourt(snap.data() as Court);
+          const data = snap.data() as Court;
+          let healedMembers = [...(data.members || [])];
+          let needsHealing = false;
+
+          const hasLeader = healedMembers.some(m => m.userId === userId);
+          const rootIndex = healedMembers.findIndex(m => m.id === "root");
+
+          if (!hasLeader || rootIndex === -1) {
+            needsHealing = true;
+            let cleanedDomain = campaignTitle || "Realm";
+            cleanedDomain = cleanedDomain.replace(/^(king|queen)\s+of\s*\.*/i, "").trim();
+            
+            const properRoot: CourtMember = {
+              id: "root",
+              parentId: null,
+              displayName: userName || "Campaign Leader",
+              title: `Sovereign of ${cleanedDomain}`,
+              isAppUser: true,
+              userId: userId,
+              photoURL: userPhotoURL || "👑"
+            };
+
+            if (rootIndex !== -1 && healedMembers[rootIndex].userId !== userId) {
+              const newId = `healed_${Date.now()}`;
+              healedMembers[rootIndex].id = newId;
+              healedMembers[rootIndex].parentId = "root";
+              
+              healedMembers.forEach(m => {
+                if (m.parentId === "root" && m.id !== newId) m.parentId = newId;
+              });
+            }
+
+            healedMembers.forEach(m => {
+              if (m.parentId === null && m.id !== "root") {
+                m.parentId = "root";
+              }
+            });
+
+            if (!healedMembers.some(m => m.id === "root")) {
+                healedMembers.push(properRoot);
+            }
+          }
+
+          if (needsHealing) {
+             const repairedCourt = { ...data, members: healedMembers };
+             setCourt(repairedCourt);
+             if (currentAppUserId === userId) {
+                setDoc(courtDocRef, repairedCourt).catch(err => console.warn("Auto-heal failed", err));
+             }
+          } else {
+             setCourt(data);
+          }
         } else {
           setCourt(null);
         }
@@ -125,32 +176,56 @@ export default function KingdomCourtBuilder({
     }
     const checkUserInCampaign = async () => {
       try {
-        const candRef = doc(db, "campaigns", campaignId, "candidates", currentAppUserId);
-        const candSnap = await getDoc(candRef);
-        if (candSnap.exists()) {
-          setIsUserInCampaign(true);
+        const courtDocRef = doc(db, "campaigns", campaignId, "courts", userId);
+        const courtSnap = await getDoc(courtDocRef);
+        if (courtSnap.exists()) {
+          const courtData = courtSnap.data() as Court;
+          const isMember = courtData.members?.some(m => m.isAppUser && m.userId === currentAppUserId);
+          if (isMember) {
+            setIsUserInCampaign(true);
+            setRequestSent(false);
+            return;
+          }
+        }
+        
+        const notifsRef = collection(db, "notifications");
+        const q = query(
+          notifsRef,
+          where("sourceUserId", "==", currentAppUserId)
+        );
+        const notifSnap = await getDocs(q);
+        const hasPending = notifSnap.docs.some(doc => {
+          const data = doc.data();
+          return data.campaignId === campaignId && data.type === "court_join" && data.needsApproval === true;
+        });
+        if (hasPending) {
+          setIsUserInCampaign(false);
+          setRequestSent(true);
           return;
         }
+
         setIsUserInCampaign(false);
+        setRequestSent(false);
       } catch (err) {
         console.warn("Failed checking candidate status:", err);
         setIsUserInCampaign(false);
+        setRequestSent(false);
       }
     };
     checkUserInCampaign();
   }, [campaignId, currentAppUserId, campaignCreatorId]);
 
   const handleRequestToJoin = async () => {
-    if (!currentAppUserId || !campaignCreatorId || requestSent) return;
+    if (!currentAppUserId || !userId || requestSent) return;
     try {
       setSaving(true);
       const notifsRef = collection(db, "notifications");
       await addDoc(notifsRef, {
-        userId: campaignCreatorId, // leader
+        userId: userId, // leader of this campaign/court
         sourceUserId: currentAppUserId,
         sourceUserName: currentAppUserName || "A User",
         sourceUserPhoto: currentAppUserPhotoURL || null,
-        type: "campaign_join",
+        type: "court_join",
         title: "Court Request",
         body: `${currentAppUserName || "A user"} wants to join your campaign's pedigree chart!`,
         read: false,
@@ -950,17 +1025,8 @@ export default function KingdomCourtBuilder({
                   No Pedigree Chart
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
-                  This sovereign has not assembled a royal court yet.
+                  This sovereign has not assembled a royal court yet. Check back later once they have founded their court.
                 </p>
-                {isUserInCampaign === false && (
-                  <button
-                    onClick={handleRequestToJoin}
-                    disabled={requestSent || saving}
-                    className="mt-4 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg cursor-pointer transition-all"
-                  >
-                    {requestSent ? "Request Sent" : "Request to Join Campaign"}
-                  </button>
-                )}
               </>
             ) : (
               <>

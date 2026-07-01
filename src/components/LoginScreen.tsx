@@ -167,10 +167,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <h1 className="font-display font-black text-3xl tracking-tight text-slate-900 dark:text-white mb-1">
             Kings of the Earth
           </h1>
-          <p className="text-[11px] font-bold bg-amber-500/10 text-amber-700 px-3 py-1 rounded-full uppercase tracking-wider mb-4 inline-block">
-            🎮 Sovereign Domain Game
-          </p>
-          <p className="text-sm text-slate-600 dark:text-slate-200 max-w-sm">
+          <p className="text-sm text-slate-600 dark:text-slate-200 max-w-sm mt-4">
             Battle rival claimants, establish absolute 1-of-1 territory domain titles, and harvest real-time continuous coronation votes to rule.
           </p>
         </div>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { User } from "firebase/auth";
-import { collection, query, where, limit, onSnapshot, updateDoc, doc, writeBatch } from "firebase/firestore";
+import { collection, query, where, limit, onSnapshot, updateDoc, doc, writeBatch, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { Bell, UserPlus, Trophy, CheckCircle, Heart, MessageCircle, Layers, Vote } from "lucide-react";
+import { Bell, UserPlus, Trophy, CheckCircle, Heart, MessageCircle, Layers, Vote, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface NotificationsScreenProps {
@@ -12,7 +12,7 @@ interface NotificationsScreenProps {
 interface AppNotification {
   id: string;
   userId: string;
-  type: "follow" | "percentile" | "campaign_join" | "like" | "comment" | "vote";
+  type: "follow" | "percentile" | "campaign_join" | "like" | "comment" | "vote" | "court_join";
   title: string;
   body: string;
   read: boolean;
@@ -58,6 +58,32 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
   const handleAcceptRequest = async (e: React.MouseEvent, n: AppNotification) => {
     e.stopPropagation();
     try {
+      if (n.type === "court_join") {
+        if (!n.campaignId) return;
+        const courtRef = doc(db, "campaigns", n.campaignId, "courts", currentUser.uid);
+        const courtSnap = await getDoc(courtRef);
+        if (courtSnap.exists()) {
+          const courtData = courtSnap.data();
+          const members = courtData.members || [];
+          if (!members.find((m: any) => m.userId === n.sourceUserId)) {
+            members.push({
+              id: Date.now().toString(),
+              parentId: "root",
+              displayName: n.sourceUserName || "A User",
+              title: "Initiate",
+              isAppUser: true,
+              userId: n.sourceUserId,
+              photoURL: n.sourceUserPhoto || null,
+            });
+            await updateDoc(courtRef, { members, updatedAt: serverTimestamp() });
+          }
+          await updateDoc(doc(db, "notifications", n.id), { needsApproval: false, read: true });
+        } else {
+           alert("You must found your custom court pedigree chart first before accepting initiates.");
+        }
+        return;
+      }
+
       const token = await currentUser.getIdToken();
       const res = await fetch("/api/accept-campaign-request", {
         method: "POST",
@@ -77,6 +103,36 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
     } catch (err) {
       console.error(err);
       alert("Failed to accept request.");
+    }
+  };
+
+  const handleRejectRequest = async (e: React.MouseEvent, n: AppNotification) => {
+    e.stopPropagation();
+    try {
+      if (n.type === "court_join") {
+        await updateDoc(doc(db, "notifications", n.id), { needsApproval: false, read: true });
+        return;
+      }
+
+      const token = await currentUser.getIdToken();
+      const res = await fetch("/api/reject-campaign-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          campaignId: n.campaignId,
+          candidateId: n.sourceUserId,
+          notificationId: n.id
+        })
+      });
+      if (!res.ok) {
+        throw new Error("Failed to reject request");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to reject request.");
     }
   };
 
@@ -262,9 +318,17 @@ export function NotificationsScreen({ currentUser }: NotificationsScreenProps) {
                         <div className="mt-3 flex gap-2">
                           <button
                             onClick={(e) => handleAcceptRequest(e, n)}
-                            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
+                            className="p-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer shadow-sm"
+                            title="Accept Request"
                           >
-                            Accept Request
+                            <CheckCircle className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={(e) => handleRejectRequest(e, n)}
+                            className="p-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer shadow-sm"
+                            title="Reject Request"
+                          >
+                            <X className="w-5 h-5 stroke-[3]" />
                           </button>
                         </div>
                       )}
