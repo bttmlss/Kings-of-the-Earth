@@ -32,8 +32,6 @@ export default function CandidateCampaignScreen({
   onVote,
   isCastingVote,
 }: CandidateCampaignScreenProps) {
-  const [hasJoined, setHasJoined] = useState(false);
-  const [showJoinToast, setShowJoinToast] = useState(false);
   const [showDetailsPage, setShowDetailsPage] = useState(false);
 
   const [activeDetailsTab, setActiveDetailsTab] = useState<'info' | 'posts' | 'media'>('info');
@@ -48,24 +46,6 @@ export default function CandidateCampaignScreen({
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [selectedMediaPost, setSelectedMediaPost] = useState<Post | null>(null);
-
-  useEffect(() => {
-    // Check if user has already requested to join
-    if (!isGuest && userId !== candidate.userId) {
-      const checkJoinStatus = async () => {
-        try {
-          const docRef = doc(db, "court_requests", `${candidate.userId}_${userId}`);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setHasJoined(true);
-          }
-        } catch (err) {
-          console.warn("Failed to check court request status:", err);
-        }
-      };
-      checkJoinStatus();
-    }
-  }, [userId, candidate.userId, isGuest]);
 
   useEffect(() => {
     // Log campaign visit for this specific candidate
@@ -236,52 +216,6 @@ export default function CandidateCampaignScreen({
     const el = document.getElementById(`section-${index}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleJoin = async () => {
-    if (isGuest) {
-      setError("Guests cannot join campaigns. Please register an account.");
-      return;
-    }
-    
-    setHasJoined(true);
-    
-    setShowJoinToast(true);
-    // Hide toast after 4 seconds
-    setTimeout(() => {
-      setShowJoinToast(false);
-    }, 4000);
-
-    // Save request to db
-    try {
-      const docRef = doc(db, "court_requests", `${candidate.userId}_${userId}`);
-      await setDoc(docRef, {
-        candidateId: candidate.userId,
-        requesterId: userId,
-        campaignId: campaign.id,
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn("Failed to save court request:", err);
-    }
-
-    // Send a notification to the candidate
-    try {
-      const notifsRef = collection(db, "notifications");
-      await addDoc(notifsRef, {
-        userId: candidate.userId,
-        type: "follow",
-        title: "Court Join Request",
-        body: `${userName} has requested to join your court in ${campaign.domainTitle}.`,
-        read: false,
-        createdAt: serverTimestamp(),
-        sourceUserId: userId,
-        sourceUserName: userName,
-        sourceUserPhoto: userPhotoURL,
-      });
-    } catch (err) {
-      console.warn("Failed to send join notification:", err);
     }
   };
 
@@ -618,40 +552,24 @@ export default function CandidateCampaignScreen({
                     </div>
                     
                     <div className="shrink-0 z-10 relative pt-2 sm:pt-4 flex flex-col sm:flex-row items-center gap-2">
-                      {userId !== candidate.userId && (
-                        <>
-                          <button
-                            onClick={handleJoin}
-                            disabled={hasJoined}
-                            className={`px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
-                              hasJoined 
-                                 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
-                                 : "bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs cursor-pointer active:scale-95"
-                            }`}
-                          >
-                            {hasJoined ? (
-                              <>
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Requested
-                              </>
-                            ) : (
-                              <>
-                                <UserPlus className="w-3.5 h-3.5" />
-                                Join Court
-                              </>
-                            )}
-                          </button>
-                          
-                          <button
-                            onClick={() => onVote && onVote(candidate.id)}
-                            disabled={isCastingVote === candidate.id}
-                            className="px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isCastingVote === candidate.id ? "VOTING..." : "VOTE"}
-                          </button>
-                        </>
-                      )}
+                      {/* Removed internal buttons */}
                     </div>
+                  </div>
+
+                  {/* VOTE button positioned at the bottom left corner of the outer campaign cover box */}
+                  <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 z-20 flex items-center gap-2">
+                    {userId !== candidate.userId && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onVote) onVote(candidate.id);
+                        }}
+                        disabled={isCastingVote === candidate.id}
+                        className="px-6 py-2 rounded-xl font-mono text-[11px] uppercase tracking-widest font-black flex items-center justify-center gap-1.5 transition-all bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20 border border-green-400 dark:border-green-600 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isCastingVote === candidate.id ? "VOTING..." : "VOTE"}
+                      </button>
+                    )}
                   </div>
 
                   {/* View Details button positioned at the bottom right corner of the outer campaign cover box */}
@@ -709,6 +627,10 @@ export default function CandidateCampaignScreen({
                     userPhotoURL={candidate.photoURL || null}
                     userProfiles={userProfiles}
                     isReadonly={userId !== candidate.userId}
+                    currentAppUserId={userId}
+                    currentAppUserName={userName}
+                    currentAppUserPhotoURL={userPhotoURL}
+                    campaignCreatorId={campaign.creatorId}
                   />
                 </div>
               </div>
@@ -988,14 +910,6 @@ export default function CandidateCampaignScreen({
           </div>
         )}
       </AnimatePresence>
-
-      {/* Beautiful Join Request Toast Notification */}
-      {showJoinToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 bg-emerald-500 text-white rounded-xl shadow-xl flex items-center gap-2.5 font-sans text-xs font-semibold uppercase tracking-wider max-w-md transition-all">
-          <CheckCircle className="w-5 h-5 shrink-0" />
-          <span>Request Sent to {candidate.displayName}! They can now assign you a role in their pedigree tree.</span>
-        </div>
-      )}
     </div>
   );
 }

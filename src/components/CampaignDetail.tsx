@@ -675,17 +675,23 @@ export default function CampaignDetail({
 
   if (selectedCandidate) {
     return (
-      <CandidateCampaignScreen
-        campaign={currentCampaign}
-        candidate={selectedCandidate}
-        onBack={() => setSelectedCandidate(null)}
-        userId={userId}
-        userName={userName}
-        userPhotoURL={userPhotoURL || null}
-        userProfiles={userProfiles || []}
-        onVote={(candidateId) => handleVote(undefined, candidateId)}
-        isCastingVote={isCastingVote}
-      />
+      <>
+        <CandidateCampaignScreen
+          campaign={currentCampaign}
+          candidate={selectedCandidate}
+          onBack={() => setSelectedCandidate(null)}
+          userId={userId}
+          userName={userName}
+          userPhotoURL={userPhotoURL || null}
+          userProfiles={userProfiles || []}
+          onVote={(candidateId) => handleVote(undefined, candidateId)}
+          isCastingVote={isCastingVote}
+        />
+        <PhoneVerificationPopup 
+          isOpen={showPhoneVerification} 
+          onClose={() => setShowPhoneVerification(false)} 
+        />
+      </>
     );
   }
 
@@ -926,14 +932,11 @@ export default function CampaignDetail({
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-emerald-500/20" />
                 <div className="flex items-center gap-2 shrink-0 relative z-10">
                   <button
-                    onClick={() => {
+                        onClick={() => {
                       if (selectedQuickVoteCandidate) {
-                         const cand = activeCandidates.find(c => c.id === selectedQuickVoteCandidate);
-                         if (window.confirm(`Are you sure you want to vote for ${cand?.displayName}?`)) {
-                           handleVote(undefined, selectedQuickVoteCandidate);
-                           setQuickVoteSearchQuery("");
-                           setSelectedQuickVoteCandidate(null);
-                         }
+                        handleVote(undefined, selectedQuickVoteCandidate);
+                        setQuickVoteSearchQuery("");
+                        setSelectedQuickVoteCandidate(null);
                       }
                     }}
                     disabled={!selectedQuickVoteCandidate || isCastingVote !== null}

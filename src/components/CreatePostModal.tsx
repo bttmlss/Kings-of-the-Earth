@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { User } from "firebase/auth";
 import { motion } from "motion/react";
-import { X, Send } from "lucide-react";
+import { X, Send, Loader2 } from "lucide-react";
 import { Campaign } from "../types";
 
 interface CreatePostModalProps {
@@ -16,9 +16,59 @@ interface CreatePostModalProps {
 export default function CreatePostModal({ user, campaigns, onClose, onSuccess }: CreatePostModalProps) {
   const [caption, setCaption] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [selectedCampaignId, setSelectedCampaignId] = useState(campaigns.length > 0 ? campaigns[0].id : "");
+  const [selectedCampaignId, setSelectedCampaignId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [userCampaigns, setUserCampaigns] = useState<{ id: string; campaignTitle: string; isOwned: boolean }[]>([]);
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(true);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchUserCampaigns = async () => {
+      setIsLoadingCampaigns(true);
+      const validCampaigns: { id: string; campaignTitle: string; isOwned: boolean }[] = [];
+      
+      try {
+        for (const c of campaigns) {
+          try {
+            const candidateRef = doc(db, "campaigns", c.id, "candidates", user.uid);
+            const candidateSnap = await getDoc(candidateRef);
+            if (candidateSnap.exists()) {
+              const data = candidateSnap.data();
+              validCampaigns.push({
+                id: c.id,
+                campaignTitle: data.campaignTitle || `${data.displayName || user.displayName}'s Campaign`,
+                isOwned: c.creatorId === user.uid
+              });
+            }
+          } catch (err) {
+            console.warn("Failed checking candidate status:", err);
+          }
+        }
+        
+        if (isActive) {
+          setUserCampaigns(validCampaigns);
+          if (validCampaigns.length > 0) {
+            setSelectedCampaignId(validCampaigns[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading user campaigns:", err);
+      } finally {
+        if (isActive) {
+          setIsLoadingCampaigns(false);
+        }
+      }
+    };
+
+    fetchUserCampaigns();
+
+    return () => {
+      isActive = false;
+    };
+  }, [campaigns, user.uid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +77,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
       return;
     }
 
-    const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
+    const selectedCampaign = userCampaigns.find(c => c.id === selectedCampaignId);
     if (!selectedCampaign) {
       setError("Invalid campaign selected.");
       return;
@@ -37,40 +87,6 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
     setError(null);
 
     try {
-      // Validate that the user is in the campaign pedigree
-      let inPedigree = user.uid === selectedCampaign.creatorId;
-      
-      if (!inPedigree) {
-        const candidateRef = doc(db, "campaigns", selectedCampaign.id, "candidates", user.uid);
-        const candidateSnap = await getDoc(candidateRef);
-        if (candidateSnap.exists()) {
-          inPedigree = true;
-        }
-      }
-
-      if (!inPedigree) {
-        const courtsRef = collection(db, "campaigns", selectedCampaign.id, "courts");
-        const courtsSnap = await getDocs(courtsRef);
-        for (const courtDoc of courtsSnap.docs) {
-          if (courtDoc.id === user.uid) {
-            inPedigree = true;
-            break;
-          }
-          const courtData = courtDoc.data();
-          const members = courtData.members || [];
-          if (members.some((m: any) => m.userId === user.uid)) {
-            inPedigree = true;
-            break;
-          }
-        }
-      }
-
-      if (!inPedigree) {
-        setError("Only users who are part of or added to the chain of command (pedigree) can post onto this campaign.");
-        setIsSubmitting(false);
-        return;
-      }
-
       const newPost = {
         userId: user.uid,
         userDisplayName: user.displayName || "Sovereign Lord",
@@ -79,7 +95,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
         imageUrl: imageUrl.trim(),
         likesCount: 0,
         campaignId: selectedCampaign.id,
-        campaignTitle: selectedCampaign.domainTitle,
+        campaignTitle: selectedCampaign.campaignTitle,
         createdAt: serverTimestamp(),
       };
 
@@ -117,9 +133,10 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
             </div>
           )}
 
-          {campaigns.length === 0 ? (
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm rounded-xl">
-              You must be a part of a kingdom (campaign) to issue a decree. Please create or join one first.
+          {isLoadingCampaigns ? (
+            <div className="p-8 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+              <span className="text-xs font-bold uppercase tracking-wider">Locating Your Realms...</span>
             </div>
           ) : (
             <>
@@ -128,13 +145,18 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
                 <select
                   value={selectedCampaignId}
                   onChange={(e) => setSelectedCampaignId(e.target.value)}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all dark:text-white"
+                  disabled={userCampaigns.length === 0}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all dark:text-white disabled:opacity-50"
                 >
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.domainTitle.toUpperCase()} {c.creatorId === user.uid ? "(OWNED REALM)" : ""}
-                    </option>
-                  ))}
+                  {userCampaigns.length === 0 ? (
+                    <option>No campaigns found</option>
+                  ) : (
+                    userCampaigns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.campaignTitle} {c.isOwned ? "(OWNED REALM)" : ""}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -182,7 +204,7 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={isSubmitting || campaigns.length === 0}
+                  disabled={isSubmitting || userCampaigns.length === 0}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-sm tracking-wide transition-all shadow-md active:scale-95 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
@@ -196,3 +218,4 @@ export default function CreatePostModal({ user, campaigns, onClose, onSuccess }:
     </div>
   );
 }
+

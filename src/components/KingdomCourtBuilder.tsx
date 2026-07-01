@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc, collection, addDoc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Court, CourtMember } from "../types";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -32,6 +32,10 @@ interface KingdomCourtBuilderProps {
   userPhotoURL: string | null;
   userProfiles: any[];
   isReadonly?: boolean;
+  currentAppUserId?: string;
+  currentAppUserName?: string;
+  currentAppUserPhotoURL?: string | null;
+  campaignCreatorId?: string;
 }
 
 const EMOJI_AVATARS = ["👑", "🛡️", "🗡️", "🧙‍♂️", "🧝‍♀️", "🦁", "🍷", "📜", "🏰", "🦄", "🌟", "⚔️", "🐉", "🦉"];
@@ -44,12 +48,18 @@ export default function KingdomCourtBuilder({
   userPhotoURL,
   userProfiles,
   isReadonly = false,
+  currentAppUserId,
+  currentAppUserName,
+  currentAppUserPhotoURL,
+  campaignCreatorId,
 }: KingdomCourtBuilderProps) {
   const [court, setCourt] = useState<Court | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUserInCampaign, setIsUserInCampaign] = useState<boolean | null>(null);
+  const [requestSent, setRequestSent] = useState(false);
 
   // ID of the node currently opening the character select popover
   const [activeEmojiSelectorId, setActiveEmojiSelectorId] = useState<string | null>(null);
@@ -105,6 +115,59 @@ export default function KingdomCourtBuilder({
 
     return () => unsubscribe();
   }, [campaignId, userId]);
+
+  // Check if current user is in campaign
+  useEffect(() => {
+    if (!currentAppUserId) return;
+    if (currentAppUserId === campaignCreatorId) {
+      setIsUserInCampaign(true);
+      return;
+    }
+    const checkUserInCampaign = async () => {
+      try {
+        const candRef = doc(db, "campaigns", campaignId, "candidates", currentAppUserId);
+        const candSnap = await getDoc(candRef);
+        if (candSnap.exists()) {
+          setIsUserInCampaign(true);
+          return;
+        }
+        setIsUserInCampaign(false);
+      } catch (err) {
+        console.warn("Failed checking candidate status:", err);
+        setIsUserInCampaign(false);
+      }
+    };
+    checkUserInCampaign();
+  }, [campaignId, currentAppUserId, campaignCreatorId]);
+
+  const handleRequestToJoin = async () => {
+    if (!currentAppUserId || !campaignCreatorId || requestSent) return;
+    try {
+      setSaving(true);
+      const notifsRef = collection(db, "notifications");
+      await addDoc(notifsRef, {
+        userId: campaignCreatorId, // leader
+        sourceUserId: currentAppUserId,
+        sourceUserName: currentAppUserName || "A User",
+        sourceUserPhoto: currentAppUserPhotoURL || null,
+        type: "campaign_join",
+        title: "Court Request",
+        body: `${currentAppUserName || "A user"} wants to join your campaign's pedigree chart!`,
+        read: false,
+        campaignId: campaignId,
+        needsApproval: true,
+        createdAt: serverTimestamp(),
+      });
+      setRequestSent(true);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to send request");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Clean or normalize campaign title prefix (e.g. "King of Cats" -> "Cats")
   const cleanedDomain = campaignTitle
@@ -881,20 +944,44 @@ export default function KingdomCourtBuilder({
             <FolderTree className="w-8 h-8" />
           </div>
           <div className="space-y-2 max-w-md text-center">
-            <h3 className="font-display font-bold text-lg md:text-xl text-slate-900 dark:text-white tracking-tight uppercase">
-              Build Your Pedigree Chart
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
-              Every true regent needs a dedicated council of loyal advisors, champions, and spymasters. Coronated in this domain, you can draft direct and indirect subordinates under your hierarchical rule in a visual family pedigree tree.
-            </p>
+            {isReadonly ? (
+              <>
+                <h3 className="font-display font-bold text-lg md:text-xl text-slate-900 dark:text-white tracking-tight uppercase">
+                  No Pedigree Chart
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                  This sovereign has not assembled a royal court yet.
+                </p>
+                {isUserInCampaign === false && (
+                  <button
+                    onClick={handleRequestToJoin}
+                    disabled={requestSent || saving}
+                    className="mt-4 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg cursor-pointer transition-all"
+                  >
+                    {requestSent ? "Request Sent" : "Request to Join Campaign"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="font-display font-bold text-lg md:text-xl text-slate-900 dark:text-white tracking-tight uppercase">
+                  Build Your Pedigree Chart
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                  Every true regent needs a dedicated council of loyal advisors, champions, and spymasters. Coronated in this domain, you can draft direct and indirect subordinates under your hierarchical rule in a visual family pedigree tree.
+                </p>
+              </>
+            )}
           </div>
-          <button
-            onClick={handleFoundCourt}
-            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-amber-500/10 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-2"
-          >
-            <Sparkles className="w-3.5 h-3.5 stroke-[2.5]" />
-            Found Custom Court
-          </button>
+          {!isReadonly && (
+            <button
+              onClick={handleFoundCourt}
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-amber-500/10 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Sparkles className="w-3.5 h-3.5 stroke-[2.5]" />
+              Found Custom Court
+            </button>
+          )}
         </div>
       ) : loading ? (
         // Loading skeleton

@@ -16,6 +16,7 @@ import UserCandlestickModal from "./UserCandlestickModal";
 import leaderboardBadge from "../assets/images/leaderboard_badge_1781916796236.jpg";
 
 interface ProfileScreenProps {
+  key?: React.Key;
   user: {
     uid: string;
     displayName: string | null;

@@ -1,10 +1,12 @@
 import { Campaign } from "./types";
 
 export const getCampaignCategory = (camp: Campaign): "Cultures" | "locations" | "Objects" | "Actions" | "Miscellaneous" => {
+  if (camp.isVerified) return "locations";
+
   if (camp.domainType) {
     const lower = camp.domainType.toLowerCase();
     if (lower === "cultures") return "Cultures";
-    if (lower === "locations" || lower === "places") return "locations";
+    if (lower === "locations" || lower === "places" || lower === "locations (places)") return "locations";
     if (lower === "objects" || lower === "things") return "Objects";
     if (lower === "actions" || lower === "verbs") return "Actions";
     return "Miscellaneous";
