@@ -13,6 +13,7 @@ interface CandidateCampaignScreenProps {
   campaign: Campaign;
   candidate: Candidate;
   onBack: () => void;
+  onViewDomainInfo?: () => void;
   userId: string;
   userName: string;
   userPhotoURL: string | null;
@@ -25,6 +26,7 @@ export default function CandidateCampaignScreen({
   campaign,
   candidate,
   onBack,
+  onViewDomainInfo,
   userId,
   userName,
   userPhotoURL,
@@ -428,7 +430,7 @@ export default function CandidateCampaignScreen({
                       key={post.id}
                       post={post}
                       currentUser={{ uid: userId, displayName: userName }}
-                      onViewCampaign={onBack}
+                      onViewCampaign={onViewDomainInfo || onBack}
                       onDelete={(deletedId) => setPosts(posts.filter(p => p.id !== deletedId))}
                     />
                   ))
@@ -474,7 +476,7 @@ export default function CandidateCampaignScreen({
                     className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span>Back to domain info</span>
+                    <span>Back</span>
                   </button>
                 </div>
                 
@@ -489,6 +491,16 @@ export default function CandidateCampaignScreen({
                     
                     {/* Action buttons in top-right of the banner/title box */}
                     <div className="absolute top-3 right-4 z-20 flex gap-2">
+                      {onViewDomainInfo && (
+                        <button
+                          onClick={onViewDomainInfo}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-slate-300 dark:text-slate-300 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer backdrop-blur-md shadow-md border border-white/10 hover:scale-105 active:scale-95 transition-all"
+                          title="View Domain Info"
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                          <span>Domain</span>
+                        </button>
+                      )}
                       {userId === candidate.userId && (
                         <button
                           id="edit-campaign-button"
@@ -900,7 +912,7 @@ export default function CandidateCampaignScreen({
               <PostCard
                 post={selectedMediaPost}
                 currentUser={{ uid: userId, displayName: userName }}
-                onViewCampaign={onBack}
+                onViewCampaign={onViewDomainInfo || onBack}
                 onDelete={(deletedId) => {
                   setPosts(posts.filter(p => p.id !== deletedId));
                   setSelectedMediaPost(null);

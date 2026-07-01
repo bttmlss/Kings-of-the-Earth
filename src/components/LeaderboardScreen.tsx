@@ -13,18 +13,38 @@ const API_KEY =
   '';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
-function AutocompleteSearchBar({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+function AutocompleteSearchBar({ value, onChange, activeTab, campaigns }: { value: string; onChange: (val: string) => void; activeTab: "general" | "location"; campaigns: Campaign[] }) {
   const placesLib = useMapsLibrary('places');
   const [predictions, setPredictions] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!placesLib || !value.trim()) {
+    if (activeTab === "general") {
+      const query = value.toLowerCase().trim();
+      const matched = campaigns
+        .filter(c => c.domainType !== "Locations (Places)" && !c.isVerified)
+        .filter(c => !query || c.domainTitle.toLowerCase().includes(query))
+        .sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0))
+        .map(c => ({
+          placeId: c.id,
+          mainText: { text: c.domainTitle },
+          secondaryText: { text: "General Domain" },
+          isCampaign: true,
+          text: { text: c.domainTitle }
+        }))
+        .slice(0, 5); // top 5 matches
+      setPredictions(matched);
+      return;
+    }
+
+    if (!value.trim()) {
       setPredictions([]);
       return;
     }
-    
+
+    // Location tab
+    if (!placesLib) return;
     let isActive = true;
     const fetchSuggestions = async () => {
       try {
@@ -40,7 +60,7 @@ function AutocompleteSearchBar({ value, onChange }: { value: string; onChange: (
     fetchSuggestions();
     
     return () => { isActive = false; };
-  }, [value, placesLib]);
+  }, [value, placesLib, activeTab, campaigns]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -58,7 +78,7 @@ function AutocompleteSearchBar({ value, onChange }: { value: string; onChange: (
       <input
         id="search-leaderboard"
         type="text"
-        placeholder="SEARCH DOMAIN, PLAYER, OR LOCATION..."
+        placeholder={activeTab === "general" ? "SEARCH DOMAIN OR PLAYER..." : "SEARCH LOCATION OR PLAYER..."}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
@@ -91,7 +111,11 @@ function AutocompleteSearchBar({ value, onChange }: { value: string; onChange: (
                 className="px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer flex items-center gap-2.5 transition-colors"
               >
                 <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                  <MapPin className="w-3 h-3 text-amber-500" />
+                  {p.isCampaign ? (
+                    <Trophy className="w-3 h-3 text-amber-500" />
+                  ) : (
+                    <MapPin className="w-3 h-3 text-amber-500" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{mainStr}</div>
@@ -133,6 +157,7 @@ interface AggregatedPlayer {
     campaignId?: string;
     isLeader?: boolean;
     isVerified?: boolean;
+    domainType?: string;
   }[];
 }
 
@@ -222,7 +247,8 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
   const [searchQuery, setSearchQuery] = useState("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [selectedPlayer, setSelectedPlayer] = useState<AggregatedPlayer | null>(null);
-  
+  const [activeTab, setActiveTab] = useState<"general" | "location">("general");
+
   const handleSetSelectedPlayer = (player: AggregatedPlayer | null) => {
     setSelectedPlayer(player);
     onModalToggle?.(player !== null);
@@ -326,6 +352,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
                 campaignId: camp.id,
                 isLeader: isLeader,
                 isVerified: camp.isVerified,
+                domainType: camp.domainType,
               });
 
               if (!p.bestKingdom || cand.voteCount > p.bestKingdom.voteCount) {
@@ -366,9 +393,45 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
 
   // Compute processed, filtered, and dynamically aggregated players based on search query
   const processedPlayers = React.useMemo(() => {
+    let tabFilteredPlayers: AggregatedPlayer[] = [];
+    
+    // Filter and recalculate stats for each player based on activeTab
+    players.forEach((p) => {
+      const relevantKingdoms = p.kingdoms.filter((k) => 
+        activeTab === "location" 
+          ? k.domainType === "Locations (Places)" || k.isVerified === true
+          : k.domainType !== "Locations (Places)" && k.isVerified !== true
+      );
+      
+      if (relevantKingdoms.length > 0) {
+        const tempTotalVotes = relevantKingdoms.reduce((sum, k) => sum + k.voteCount, 0);
+        const tempCrownsHeld = relevantKingdoms.filter((k) => k.isLeader).length;
+        const bestOfRelevant = relevantKingdoms.reduce((best, k) => {
+          if (!best || k.voteCount > best.voteCount) {
+            return { domainTitle: k.domainTitle, voteCount: k.voteCount, isVerified: k.isVerified };
+          }
+          return best;
+        }, null as { domainTitle: string; voteCount: number; isVerified?: boolean } | null);
+
+        if (tempTotalVotes > 0) {
+          tabFilteredPlayers.push({
+            ...p,
+            totalVotes: tempTotalVotes,
+            crownsHeld: tempCrownsHeld,
+            kingdomsContested: relevantKingdoms.length,
+            bestKingdom: bestOfRelevant || p.bestKingdom,
+            kingdoms: relevantKingdoms,
+          });
+        }
+      }
+    });
+
     const query = searchQuery.toLowerCase().trim();
     if (!query) {
-      return players;
+      return tabFilteredPlayers.sort((a, b) => {
+        if (b.crownsHeld !== a.crownsHeld) return b.crownsHeld - a.crownsHeld;
+        return b.totalVotes - a.totalVotes;
+      });
     }
 
     const tokens = query.split(/\s+/).filter(Boolean);
@@ -401,7 +464,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
 
     if (isCampaignSearch) {
       const matchedCampIds = new Set(matchedCampaigns.map((c) => c.id));
-      players.forEach((p) => {
+      tabFilteredPlayers.forEach((p) => {
         const relevantKingdoms = p.kingdoms.filter((k) => k.campaignId && matchedCampIds.has(k.campaignId));
         if (relevantKingdoms.length > 0) {
           // Re-calculate stats targeting ONLY matched campaigns!
@@ -432,7 +495,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
         }
       });
     } else {
-      result = players;
+      result = tabFilteredPlayers;
     }
 
     if (personQuery.trim()) {
@@ -457,7 +520,7 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
       }
       return b.totalVotes - a.totalVotes;
     });
-  }, [players, searchQuery, campaigns]);
+  }, [players, searchQuery, campaigns, activeTab]);
 
   // 2. Already filtered at the search level
   const filteredPlayers = processedPlayers;
@@ -498,8 +561,26 @@ export default function LeaderboardScreen({ campaigns, currentUserId, onViewProf
             leaderboards
           </h2>
 
-          {/* Search Bar */}
-          <AutocompleteSearchBar value={searchQuery} onChange={setSearchQuery} />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Domain Type Tabs */}
+            <div className="flex bg-slate-200/60 dark:bg-slate-800/60 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab("general")}
+                className={`flex-1 sm:flex-none px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === "general" ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-500 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+              >
+                General
+              </button>
+              <button
+                onClick={() => setActiveTab("location")}
+                className={`flex-1 sm:flex-none px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === "location" ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-500 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+              >
+                Locations
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <AutocompleteSearchBar value={searchQuery} onChange={setSearchQuery} activeTab={activeTab} campaigns={campaigns} />
+          </div>
         </div>
 
         {/* Custom Scored Standings Spreadsheet-Style Grid Table */}

@@ -805,10 +805,10 @@ export default function ProfileScreen({
                       let catLabel = "Misc";
                       if (actualCamp.domainType) {
                         const lower = actualCamp.domainType.toLowerCase();
-                        if (lower === "cultures") { catEmoji = "👥"; catLabel = "Cultures"; }
-                        else if (lower === "locations" || lower === "places") { catEmoji = "📍"; catLabel = "Locations"; }
-                        else if (lower === "objects" || lower === "things") { catEmoji = "📦"; catLabel = "Objects"; }
-                        else if (lower === "actions" || lower === "verbs") { catEmoji = "⚡"; catLabel = "Actions"; }
+                        if (lower.includes("cultures")) { catEmoji = "👥"; catLabel = "Cultures"; }
+                        else if (lower.includes("locations") || lower.includes("places")) { catEmoji = "📍"; catLabel = "Locations"; }
+                        else if (lower.includes("objects") || lower.includes("things")) { catEmoji = "📦"; catLabel = "Objects"; }
+                        else if (lower.includes("actions") || lower.includes("verbs")) { catEmoji = "⚡"; catLabel = "Actions"; }
                       }
 
                       const cleanTitle = actualCamp.domainTitle || "";
@@ -1410,10 +1410,10 @@ export default function ProfileScreen({
                   const filteredList = activeCampaignList.filter((actualCamp) => {
                     if (!actualCamp.domainType) return cat.id === "misc";
                     const lower = actualCamp.domainType.toLowerCase();
-                    if (lower === "cultures") return cat.id === "cultures";
-                    if (lower === "locations" || lower === "places") return cat.id === "locations";
-                    if (lower === "objects" || lower === "things") return cat.id === "objects";
-                    if (lower === "actions" || lower === "verbs") return cat.id === "actions";
+                    if (lower.includes("cultures")) return cat.id === "cultures";
+                    if (lower.includes("locations") || lower.includes("places")) return cat.id === "locations";
+                    if (lower.includes("objects") || lower.includes("things")) return cat.id === "objects";
+                    if (lower.includes("actions") || lower.includes("verbs")) return cat.id === "actions";
                     return cat.id === "misc";
                   });
 

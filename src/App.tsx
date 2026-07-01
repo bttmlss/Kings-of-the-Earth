@@ -66,6 +66,7 @@ export default function App() {
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<"home" | "campaign" | "leaderboard" | "profile" | "notifications">("home");
+  const [campaignOriginTab, setCampaignOriginTab] = useState<"home" | "campaign" | "leaderboard" | "profile" | "notifications" | null>(null);
   
   const [viewedUserRaw, setViewedUserRaw] = useState<{ uid: string; displayName: string | null; photoURL?: string | null } | null>(null);
   const viewedUser = viewedUserRaw;
@@ -592,6 +593,7 @@ export default function App() {
                   onViewCampaign={(campaignId) => {
                     const camp = campaigns.find(c => c.id === campaignId);
                     if (camp) {
+                      setCampaignOriginTab(currentTab);
                       setCurrentTab("campaign");
                       setSelectedCampaign(camp);
                       setFocusedCampaignUserId(null);
@@ -642,6 +644,7 @@ export default function App() {
                 campaigns={campaigns}
                 onLogout={handleLogout}
                 onEnterCampaign={(camp, targetUserId) => {
+                  setCampaignOriginTab(currentTab);
                   setCurrentTab("campaign");
                   setSelectedCampaign(camp);
                   setFocusedCampaignUserId(targetUserId || null);
@@ -778,7 +781,10 @@ export default function App() {
                             <React.Fragment key={`recent-${visit.type}-${visit.id}`}>
                               <CampaignCard
                                 campaign={camp}
-                                onEnter={() => setSelectedCampaign(camp)}
+                                onEnter={() => {
+                                  setCampaignOriginTab("campaign");
+                                  setSelectedCampaign(camp);
+                                }}
                               />
                               <hr className="border-t border-slate-200 dark:border-slate-800/80 my-1 w-full" />
                             </React.Fragment>
@@ -848,6 +854,7 @@ export default function App() {
                           <motion.div
                             whileHover={{ y: -1, scale: 1.002, transition: { duration: 0.1 } }}
                             onClick={() => {
+                              setCampaignOriginTab("campaign");
                               setFocusedCampaignUserId(cand.userId);
                               setSelectedCampaign(camp);
                             }}
@@ -915,7 +922,10 @@ export default function App() {
                           <React.Fragment key={camp.id}>
                             <CampaignCard
                               campaign={camp}
-                              onEnter={() => setSelectedCampaign(camp)}
+                              onEnter={() => {
+                                setCampaignOriginTab("campaign");
+                                setSelectedCampaign(camp);
+                              }}
                             />
                             {idx !== displayedCampaigns.slice(0, 30).length - 1 && (
                               <hr className="border-t border-slate-200 dark:border-slate-800/80 my-1 w-full" />
@@ -957,6 +967,10 @@ export default function App() {
                 onBack={() => {
                   setSelectedCampaign(null);
                   setFocusedCampaignUserId(null);
+                  if (campaignOriginTab && campaignOriginTab !== "campaign") {
+                    setCurrentTab(campaignOriginTab);
+                  }
+                  setCampaignOriginTab(null);
                 }}
                 onViewProfile={(targetedUser) => {
                   setViewedUser(targetedUser);
@@ -1085,6 +1099,8 @@ export default function App() {
             onClose={() => setIsCreateModalOpen(false)}
             onSuccess={(newCamp) => {
               setIsCreateModalOpen(false);
+              setCampaignOriginTab(currentTab);
+              setCurrentTab("campaign");
               setSelectedCampaign(newCamp);
               setFeedback(`Kingdom '${newCamp.domainTitle}' has been coronated successfully!`);
               setTimeout(() => setFeedback(null), 5000);

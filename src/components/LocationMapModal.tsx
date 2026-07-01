@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { X, MapPin } from "lucide-react";
 import { motion } from "motion/react";
-import { APIProvider, Map, useMapsLibrary, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, useMap, useMapsLibrary, AdvancedMarker } from '@vis.gl/react-google-maps';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -15,23 +15,47 @@ interface LocationMapModalProps {
   onClose: () => void;
 }
 
+function MapEffects({ bounds, center }: { bounds: google.maps.LatLngBounds | null, center: google.maps.LatLngLiteral | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map) return;
+    if (bounds) {
+      map.fitBounds(bounds);
+    } else if (center) {
+      map.setCenter(center);
+      map.setZoom(12);
+    }
+  }, [map, bounds, center]);
+  return null;
+}
+
 function LocationMapInner({ locationName }: { locationName: string }) {
   const placesLib = useMapsLibrary('places');
   const [center, setCenter] = useState<google.maps.LatLngLiteral | null>(null);
+  const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null);
 
   useEffect(() => {
     if (!placesLib || !locationName) return;
 
     const findPlace = async () => {
-      const geocoder = new google.maps.Geocoder();
       try {
-        const response = await geocoder.geocode({ address: locationName });
-        if (response.results && response.results.length > 0) {
-          const loc = response.results[0].geometry.location;
-          setCenter({ lat: loc.lat(), lng: loc.lng() });
+        const { places } = await placesLib.Place.searchByText({
+          textQuery: locationName,
+          fields: ['location', 'viewport'],
+          maxResultCount: 1,
+        });
+        
+        if (places && places.length > 0) {
+          const place = places[0];
+          if (place.location) {
+            setCenter({ lat: place.location.lat(), lng: place.location.lng() });
+          }
+          if (place.viewport) {
+            setBounds(place.viewport);
+          }
         }
       } catch (err) {
-        console.error("Geocoding error:", err);
+        console.error("Places API error:", err);
       }
     };
     findPlace();
@@ -56,6 +80,7 @@ function LocationMapInner({ locationName }: { locationName: string }) {
       gestureHandling="greedy"
       disableDefaultUI={true}
     >
+      <MapEffects bounds={bounds} center={center} />
       <AdvancedMarker position={center}>
         <div className="bg-amber-500 p-2 rounded-full shadow-lg border-2 border-white dark:border-slate-800 text-white">
           <MapPin className="w-5 h-5" />

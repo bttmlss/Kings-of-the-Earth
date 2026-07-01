@@ -679,7 +679,14 @@ export default function CampaignDetail({
         <CandidateCampaignScreen
           campaign={currentCampaign}
           candidate={selectedCandidate}
-          onBack={() => setSelectedCandidate(null)}
+          onBack={() => {
+            if (initialSelectedCandidateUserId === selectedCandidate.userId) {
+              onBack();
+            } else {
+              setSelectedCandidate(null);
+            }
+          }}
+          onViewDomainInfo={() => setSelectedCandidate(null)}
           userId={userId}
           userName={userName}
           userPhotoURL={userPhotoURL || null}

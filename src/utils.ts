@@ -5,10 +5,10 @@ export const getCampaignCategory = (camp: Campaign): "Cultures" | "locations" | 
 
   if (camp.domainType) {
     const lower = camp.domainType.toLowerCase();
-    if (lower === "cultures") return "Cultures";
-    if (lower === "locations" || lower === "places" || lower === "locations (places)") return "locations";
-    if (lower === "objects" || lower === "things") return "Objects";
-    if (lower === "actions" || lower === "verbs") return "Actions";
+    if (lower.includes("cultures")) return "Cultures";
+    if (lower.includes("locations") || lower.includes("places")) return "locations";
+    if (lower.includes("objects") || lower.includes("things")) return "Objects";
+    if (lower.includes("actions") || lower.includes("verbs")) return "Actions";
     return "Miscellaneous";
   }
 
